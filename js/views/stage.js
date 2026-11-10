@@ -1,0 +1,111 @@
+import { PN } from '../core.js';
+import { drawList, drawCard, drawGraph, isNode, graphCard, resetGraph } from './basic.js';
+import { isHeap, kind, drawPoints, drawBits, drawNet, drawGrid, drawIv, heapTree, drawCT, callCard, resetCalls } from './structures.js';
+
+const objs = new Map();
+
+export function drawStage(wrap, step, frame, index, previous, lastViewed, {
+  views, roles, topics, tree, speed, focus, omitNames = /** @type {string[]} */ ([]), omitReference = /** @type {string | number | undefined} */ (undefined),
+}) {
+  const frames = step.F.length > 1 ? [step.F[0], frame] : [frame];
+  const refs = new Map();
+  const add = (id, name) => {
+    if (!refs.has(id)) refs.set(id, []);
+    if (!refs.get(id).includes(name)) refs.get(id).push(name);
+  };
+  let strings = 0;
+  frames.forEach(f => Object.entries(f.v).forEach(([name, value]) => {
+    if (value?.r) add(value.r, name);
+    else if (typeof value === 'string' && value.length > 1 && value.length <= 80 && strings < 3) {
+      const id = 's:' + name;
+      if (!refs.has(id)) strings++;
+      step.H[id] = { k: 'l', v: [...value] };
+      add(id, name);
+    }
+  }));
+  for (const [id, names] of [...refs]) {
+    if (step.H[id].k !== 'o') continue;
+    for (const [field, value] of step.H[id].v) {
+      const child = step.H[value?.r];
+      if (child && child.k !== 'o' && !child.v.some(item => step.H[(Array.isArray(item) ? item[1] : item)?.r]?.k === 'o')) {
+        if (!refs.has(value.r)) add(value.r, names[0] + '.' + field);
+      }
+    }
+  }
+
+  const objects = [...refs].map(([id, names]) => {
+    const heap = step.H[id];
+    const heapName = names.find(name => isHeap(name, roles));
+    const type = heap.k === 'o' ? 'card' : kind(heap, step, heapName || names[0], roles, topics);
+    const heapTreeEnabled = type === 'list' && views.heap && heap.v.length > 0 && Boolean(heapName);
+    const linked = heap.k === 'o' && (isNode(heap) || heap.v.some(([, value]) => {
+      const child = step.H[value?.r];
+      return child?.k === 'o' || child?.v.some(item => step.H[(Array.isArray(item) ? item[1] : item)?.r]?.k === 'o');
+    }));
+    return { id, names, heap, type, visible: views[type] && !(linked && views.nodes), heapTreeEnabled };
+  }).filter(object => object.id !== omitReference && !object.names.every(name => omitNames.includes(name)) && (object.visible || object.heapTreeEnabled))
+    .sort((a, b) => Number(a.names.includes(focus)) - Number(b.names.includes(focus))).slice(-8);
+
+  const asInteger = value => Number.isSafeInteger(value) ? BigInt(value) :
+    /^-?\d+$/.test(value?.p ?? '') ? BigInt(value.p) : undefined;
+  const bitVariables = views.bits ? Object.entries(frame.v).filter(([name, value]) =>
+    /mask|flags|^bits$|^bitset$/i.test(name) && asInteger(value) !== undefined).slice(0, 4) : [];
+  const ids = new Set([...objects.map(object => object.id), ...bitVariables.map(([name]) => 'bits:' + name)]);
+  for (const [id, element] of objs) {
+    if (ids.has(id)) continue;
+    element.remove();
+    objs.delete(id);
+  }
+  const pointers = Object.entries(frame.v).filter(([name, value]) => PN.test(name) && Number.isInteger(value) && value >= 0);
+  const container = id => {
+    let element = objs.get(id);
+    if (!element) {
+      element = document.createElement('div');
+      element.className = 'obj';
+      element.dataset.vizId = id;
+      objs.set(id, element);
+      wrap.append(element);
+    }
+    return element;
+  };
+  for (const { id, names, heap, type, heapTreeEnabled } of objects) {
+    const element = container(id);
+    element.classList.toggle('focused-card', names.includes(focus));
+    element.toggleAttribute('data-zoomable', type === 'net');
+    const label = names.join(', ');
+    if (type === 'grid') drawGrid(element, label, heap, step, lastViewed, frame.v);
+    else if (type === 'iv') drawIv(element, label, heap, step, frame.v);
+    else if (type === 'net') drawNet(element, label, heap, step, frames);
+    else if (type === 'points') drawPoints(element, label, heap, step);
+    else if (type === 'list') {
+      drawList(element, label, heap, pointers, id, step);
+      element._row.hidden = !views.list;
+      if (heapTreeEnabled) heapTree(element, heap.v, names.some(name => /seg/.test(name)) ? 1 : 0, pointers, step.H);
+      else element._tr?.remove();
+    } else drawCard(element, label, step, heap, lastViewed, id);
+  }
+  const previousFrame = previous?.F.at(-1);
+  for (const [name, value] of bitVariables) {
+    const priorValue = previousFrame?.n === frame.n ? asInteger(previousFrame.v[name]) : undefined;
+    const element = container('bits:' + name);
+    element.classList.toggle('focused-card', name === focus);
+    drawBits(element, name, asInteger(value), priorValue);
+  }
+
+  if (views.nodes) drawGraph(wrap, step, frames, speed);
+  else if (graphCard()) graphCard().style.display = 'none';
+  const focusedNode = [...refs].find(([, names]) => names.includes(focus));
+  graphCard()?.classList.toggle('focused-card', Boolean(focusedNode && step.H[focusedNode[0]]?.k === 'o'));
+  if (views.calls) drawCT(wrap, tree, index);
+  else if (callCard()) callCard().style.display = 'none';
+  const stageIsEmpty = !ids.size && (!graphCard() || graphCard().style.display === 'none') && (!callCard() || callCard().style.display === 'none');
+  wrap.classList.toggle('void', stageIsEmpty);
+}
+
+export function resetStage(wrap) {
+  wrap.replaceChildren();
+  wrap.classList.add('void');
+  objs.clear();
+  resetGraph();
+  resetCalls();
+}

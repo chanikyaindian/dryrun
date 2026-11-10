@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-SNbBfi5sdDTWB5GGK3REudb6KHRx3YVQjsmqzBJ+Jpw=' 'wasm-unsafe-eval'; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Dryrun Python runner</title>
+<script>
+window.addEventListener('message', function connect(event) {
+  if (event.source !== window.parent || event.data !== 'dryrun-init' || event.ports.length !== 1) return;
+  window.removeEventListener('message', connect);
+  const port = event.ports[0];
+  let worker;
+  let requestId;
+  port.onmessage = ({ data }) => {
+    if (worker) {
+      if (requestId === undefined && Number.isSafeInteger(data.id) && typeof data.src === 'string' && data.src.length <= 131072) {
+        requestId = data.id;
+        worker.postMessage({ id: requestId, src: data.src });
+      }
+      return;
+    }
+    const { script, ...assets } = data;
+    const url = URL.createObjectURL(new Blob([script], { type: 'text/javascript' }));
+    try {
+      worker = new Worker(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    worker.onmessage = ({ data }) => {
+      if (data?.type === 'ready' && typeof data.version === 'string' && data.version.length <= 24) {
+        port.postMessage({ type: 'ready', version: data.version });
+      } else if (data?.type === 'unavailable') {
+        port.postMessage({ type: 'unavailable' });
+      } else if (requestId !== undefined && data?.id === requestId) {
+        if (data.type === 'result' && typeof data.json === 'string' && data.json.length <= 24 * 1024 * 1024) {
+          port.postMessage({ type: 'result', id: requestId, json: data.json });
+        } else {
+          port.postMessage({ type: 'fail', id: requestId });
+        }
+      }
+    };
+    worker.onerror = () => port.postMessage({ type: 'unavailable' });
+    worker.postMessage(assets, [assets.wasm, assets.stdlib, assets.lock]);
+  };
+});
+</script>

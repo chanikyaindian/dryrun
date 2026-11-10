@@ -1,0 +1,45 @@
+/* Night palette for the trace workspace and its diagrams. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #101526; --surface: #171e31; --panel-soft: #1e2942; --line: #3b4a69;
+  --ink: #e9eeff; --mu: #b9c4df; --subtle: #a9b8dc;
+  --accent: #aab9ff; --accent-hover: #c5cfff; --accent-ink: #192347; --accent-soft: #2a385a;
+  --warning: #ffda8a; --warn-soft: #47391e; --bad: #ffabc0; --bad-soft: #452838;
+  --blue: #aab9ff; --onb: #192347; --bs: #2a385a; --bar: #34476d; --bart: #e9eeff;
+  --plot-line: #8799c9; --plot-grid: #a5b7ea16; --cue-soft: #344324; --cue-line: #a7bb64;
+}
+[data-theme="dark"] :is(.library-feature, .visual-stage, .watch-canvas) {
+  background-color: var(--panel-soft);
+  background-image: linear-gradient(var(--plot-grid) 1px, transparent 1px), linear-gradient(90deg, var(--plot-grid) 1px, transparent 1px);
+}
+[data-theme="dark"] .watch-player {
+  --watch-bg: var(--panel-soft); --watch-ink: var(--ink); --watch-muted: var(--mu);
+  --watch-accent: var(--accent); --watch-edge: var(--plot-line); --watch-line: var(--line); --watch-amber: var(--cue-line);
+}
+[data-theme="dark"] .watch-canvas:is([data-scene="backtracking"], [data-scene="topic"]) { background: var(--bg); }
+[data-theme="dark"] :is(.canvas-label, .watch-dock, .fullscreen-operation, .watch-table, .watch-values li, .decision-tree, .array-target code),
+[data-theme="dark"] .editor-pane > :is(.pane-header, .editor-footer) { background: var(--surface); }
+[data-theme="dark"] :is(.watch-speed, .watch-step, .watch-queue li, .watch-matrix td, .decision-tiles > li[data-used="true"], .topic-lane) {
+  background: var(--panel-soft); color: var(--ink);
+}
+[data-theme="dark"] :is(.watch-play, .feature-open, .catalog-filters button[aria-pressed="true"]) { color: var(--accent-ink); }
+[data-theme="dark"] .watch-play:not(:disabled):hover { background: var(--accent-hover); }
+[data-theme="dark"] .watch-icon:not(:disabled):hover { background: var(--accent-soft); }
+[data-theme="dark"] :is(.watch-table thead, .array-glyph, .feature-bar) { background: var(--bar); border-color: var(--plot-line); }
+[data-theme="dark"] :is(.array-slot[data-active="true"] .array-glyph, .feature-bar[data-compare="true"], .decision-tiles > li[data-changed="true"], .decision-saved > li[data-changed="true"], .topic-cells li[data-active="true"]) {
+  background: var(--cue-soft); color: var(--ink); border-color: var(--cue-line);
+}
+[data-theme="dark"] :is(.array-slot[data-changed="true"] .array-glyph, .watch-matrix td[data-cue]) { background: var(--hl); color: #192347; }
+[data-theme="dark"] :is(.watch-node:not([data-active="true"]) circle, .watch-call:not([data-active="true"]) rect, .linked-node:not([data-active="true"]) rect, .topic-tree rect) { fill: var(--surface); }
+[data-theme="dark"] .watch-node[data-processed="true"][data-active="false"][data-queued="false"] circle { fill: var(--bar); }
+[data-theme="dark"] .linked-node[data-active="true"] text { fill: #192347; }
+[data-theme="dark"] .linked-node[data-active="true"] .linked-pointer { fill: var(--watch-ink); }
+[data-theme="dark"] .topic-tree g[data-active="true"] rect { fill: var(--cue-soft); stroke: var(--cue-line); }
+[data-theme="dark"] :is(.linked-side, .topic-tree .topic-edge-label) { stroke: var(--surface); }
+[data-theme="dark"] .topic-lane { border-color: var(--line); }
+[data-theme="dark"] .watch-dock input::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--watch-accent) var(--progress), var(--line) var(--progress));
+}
+[data-theme="dark"] .watch-dock input::-moz-range-track {
+  background: linear-gradient(90deg, var(--watch-accent) var(--progress), var(--line) var(--progress));
+}
