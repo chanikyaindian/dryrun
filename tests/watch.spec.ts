@@ -13,7 +13,7 @@ async function custom(page: Page, source: string) {
   await openExample(page, 'My code');
   await page.getByLabel('Python code', { exact: true }).fill(source);
   await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Watch', exact: true }).click();
-  await expect(timeline(page)).toBeVisible({ timeout: 45000 });
+  await expect(timeline(page)).toBeVisible({ timeout: 90000 });
 }
 async function findBeat(page: Page, text: RegExp) {
   const caption = player(page).locator('.watch-caption');
@@ -69,6 +69,7 @@ test('fullscreen fallback hides captions and returns focus and position', async 
 });
 
 test('custom sorting, binary search, and BFS cue only trace-backed events', async ({ page }) => {
+  test.setTimeout(290000);
   await page.goto('/#watch');
   await custom(page, `items = [3, 1, 2]
 noise = [8, 9, 10]
@@ -260,6 +261,7 @@ test('desktop backtracking connects the first save and undo to the raw trace', a
 });
 
 test('custom two-pointer, prefix-sum and bit traces explain observed operations', async ({ page }) => {
+  test.setTimeout(290000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/#write');
   await custom(page, `data = [1, 4, 5, 8]
@@ -292,6 +294,7 @@ print(flags)`);
 });
 
 test('custom shortest-path and disjoint-set traces show verified updates', async ({ page }) => {
+  test.setTimeout(190000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/#write');
   await custom(page, `from heapq import heappush, heappop

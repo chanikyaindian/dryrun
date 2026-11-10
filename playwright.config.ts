@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test';
 const preview = process.env.DRYRUN_PREVIEW === '1';
 export default defineConfig({
   testDir: './tests',
-  timeout: 70000,
+  timeout: 105000,
   expect: { timeout: 10000 },
   workers: 2,
   use: {

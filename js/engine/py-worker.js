@@ -45,7 +45,12 @@
       self.onmessage = null;
       try {
         py.globals.set('USER_SRC', src);
-        postMessage({ type: 'result', id, json: await py.runPythonAsync('await run_trace_async(USER_SRC)') });
+        const json = await py.runPythonAsync('await run_trace_async(USER_SRC)');
+        if (typeof json !== 'string' || json.length > 24 * 1024 * 1024) {
+          postMessage({ type: 'oversized', id });
+          return;
+        }
+        postMessage({ type: 'result', id, json });
       } catch {
         postMessage({ type: 'fail', id });
       } finally {

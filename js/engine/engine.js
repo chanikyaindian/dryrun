@@ -34,7 +34,7 @@ export const Engine = {
         else this.reset(worker);
         reject(Error(message));
       };
-      const timer = setTimeout(() => fail('Python took too long to start. Select Run to retry.'), 30000);
+      const timer = setTimeout(() => fail('Python took too long to start. Select Run to retry.'), 75000);
       worker.onerror = () => fail('Could not load the Python runtime. Select Run to retry.');
       worker.onmessage = ({ data }) => {
         if (this.worker !== worker || !data || typeof data !== 'object') return;
@@ -47,6 +47,7 @@ export const Engine = {
           fail('Could not load the Python runtime. Select Run to retry.');
         } else if (this.active && this.active.id === data.id) {
           if (data.type === 'result') this.active.finish(null, data.json);
+          if (data.type === 'oversized') this.active.finish(Error('The trace exceeded the size limit. Try a smaller input.'));
           if (data.type === 'fail') this.active.finish(Error('The Python runtime could not complete this run.'));
         }
       };

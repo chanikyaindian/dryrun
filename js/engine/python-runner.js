@@ -1,13 +1,13 @@
 import workerSource from './py-worker.js?raw';
 import tracerUrl from '../../py/tracer.py?url&no-inline';
 
-export const runtimeUrl = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
+export const runtimeUrl = 'https://cdn.jsdelivr.net/pyodide/v0.29.5/full/';
 const integrity = {
-  'pyodide.js': 'sha256-wAaRB2IdW5QqZZ5zehLndMwEUf6qIlb0ddcuBx2ETsc=',
-  'pyodide.asm.js': 'sha256-kZVgZS7T2tNwfLOjlHhdoeBG+xPcDe+hYgWP8jDLfu0=',
-  'pyodide.asm.wasm': 'sha256-t+ZqGUJ6VQEKwzZ8G2xkuJP5gm94NBKUX98MMzfzvJQ=',
-  'python_stdlib.zip': 'sha256-colFIreRhYudYTrHhrlR2LUJQDXc83YxPqJKRmgQ8zY=',
-  'pyodide-lock.json': 'sha256-zVC0nelExXkEXhIv6GKLMfnORGN58DLzbAXic9OHZuA=',
+  'pyodide.js': 'sha256-f4MqNQJAJj2ZRqnDyHf3vNq2w31txl9yzTvlkF3KYt0=',
+  'pyodide.asm.js': 'sha256-NWxC9p4WlTl+nYZwvTwuZ4JIzeduGL2uFzHoSFN7R9c=',
+  'pyodide.asm.wasm': 'sha256-VDCaWiz9dXsfD9vJCTySUD97NBUAEQMp2TJIcYORJxg=',
+  'python_stdlib.zip': 'sha256-gx/R5TUIS5cvh8ajUnXePSNu/VFm9ed86JSXcQY15zw=',
+  'pyodide-lock.json': 'sha256-FNLC26EBJ3mZ4XE15lPY8VOJrRQ39T6uITvww83/cj0=',
 };
 let loading;
 
@@ -54,17 +54,25 @@ export function createPythonRunner() {
     },
   };
 
-  port1.onmessage = event => runner.onmessage?.(event);
   port1.onmessageerror = () => runner.onerror?.();
   frame.onerror = () => runner.onerror?.();
-  frame.addEventListener('load', () => {
-    if (!terminated) frame.contentWindow.postMessage('dryrun-init', '*', [port2]);
-  }, { once: true });
-
   runtimeAssets().then(assets => {
     if (terminated) return;
+    port1.onmessage = event => {
+      if (event.data?.type === 'connected') {
+        port1.onmessage = message => runner.onmessage?.(message);
+        port1.postMessage(assets);
+      }
+    };
+    frame.addEventListener('load', () => {
+      if (terminated) return;
+      try {
+        frame.contentWindow.postMessage('dryrun-init', '*', [port2]);
+      } catch {
+        runner.onerror?.();
+      }
+    }, { once: true });
     document.body.append(frame);
-    port1.postMessage(assets);
   }).catch(() => {
     if (!terminated) runner.onerror?.();
   });

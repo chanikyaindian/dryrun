@@ -1,10 +1,10 @@
 <!doctype html>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-SNbBfi5sdDTWB5GGK3REudb6KHRx3YVQjsmqzBJ+Jpw=' 'wasm-unsafe-eval'; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-yD4TBOgkVIZdXIwImUbSuvL0Jlml1TyYSifiFIJ0mZw=' 'wasm-unsafe-eval'; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Dryrun Python runner</title>
 <script>
 window.addEventListener('message', function connect(event) {
-  if (event.source !== window.parent || event.data !== 'dryrun-init' || event.ports.length !== 1) return;
+  if (window.parent === window || event.source !== window.parent || event.origin !== location.origin || event.data !== 'dryrun-init' || event.ports.length !== 1) return;
   window.removeEventListener('message', connect);
   const port = event.ports[0];
   let worker;
@@ -18,27 +18,40 @@ window.addEventListener('message', function connect(event) {
       return;
     }
     const { script, ...assets } = data;
+    if (typeof script !== 'string' || ![assets.wasm, assets.stdlib, assets.lock].every(asset => asset instanceof ArrayBuffer)) {
+      port.postMessage({ type: 'unavailable' });
+      return;
+    }
     const url = URL.createObjectURL(new Blob([script], { type: 'text/javascript' }));
     try {
       worker = new Worker(url);
-    } finally {
+    } catch {
       URL.revokeObjectURL(url);
+      port.postMessage({ type: 'unavailable' });
+      return;
     }
     worker.onmessage = ({ data }) => {
+      URL.revokeObjectURL(url);
       if (data?.type === 'ready' && typeof data.version === 'string' && data.version.length <= 24) {
         port.postMessage({ type: 'ready', version: data.version });
       } else if (data?.type === 'unavailable') {
         port.postMessage({ type: 'unavailable' });
       } else if (requestId !== undefined && data?.id === requestId) {
+        worker.terminate();
         if (data.type === 'result' && typeof data.json === 'string' && data.json.length <= 24 * 1024 * 1024) {
           port.postMessage({ type: 'result', id: requestId, json: data.json });
         } else {
-          port.postMessage({ type: 'fail', id: requestId });
+          const type = data.type === 'oversized' ? 'oversized' : 'fail';
+          port.postMessage({ type, id: requestId });
         }
       }
     };
-    worker.onerror = () => port.postMessage({ type: 'unavailable' });
+    worker.onerror = () => {
+      URL.revokeObjectURL(url);
+      port.postMessage({ type: 'unavailable' });
+    };
     worker.postMessage(assets, [assets.wasm, assets.stdlib, assets.lock]);
   };
+  port.postMessage({ type: 'connected' });
 });
 </script>

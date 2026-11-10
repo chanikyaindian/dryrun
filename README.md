@@ -25,7 +25,7 @@ Open the URL printed by Vite. Run `npm run build` for a static site in `dist/` a
 
 ## Execution and playback
 
-- Custom code runs on CPython 3.12.1 via Pyodide in a Web Worker. Examples use the bundled Python-subset interpreter while Pyodide starts or if it is unavailable.
+- Custom code runs on CPython 3.13.2 via Pyodide 0.29.5 in a Web Worker. Examples use the bundled Python-subset interpreter while Pyodide starts or if it is unavailable.
 - Async snippets can use top-level `await main()` on the worker's event loop. A nested `asyncio.run()` call raises a runtime error.
 - The tracer records executed lines, scopes, object snapshots, output, function calls and returns, and exceptions. Scrubbing replays snapshots. Syntax and compilation errors identify the offending line and column.
 - Pattern suggestions combine AST signals, source names, and observed changes. The stage uses object shapes and role hints to choose its visualizations.
@@ -36,7 +36,7 @@ Custom snippets run in a fresh worker inside an opaque-origin iframe. The runner
 
 The tracer allowlists common standard-library modules and restricts file access, interactive input, and dynamic execution builtins. Browser isolation enforces the runner’s privileges separately from those Python restrictions. The runtime heap is capped at 256 MiB, a run at eight seconds, and a trace at 4,000 recorded steps plus its final snapshot. The app also bounds source and trace payload sizes. Examples can still use the bundled interpreter when the Python download is unavailable.
 
-Vite dev and preview serve security headers. The static build includes CSP in both HTML documents, and hosts serving `dist/` should add the response-only protections separately. Serve the app document with `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY`. Serve `python-runner.html` with `Content-Security-Policy: frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN` so Dryrun can embed its own runner. Apply `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and the permissions policy in `vite.config.ts` on both routes. If you edit the inline runner broker, update its CSP SHA-256 hash to match the exact script.
+Vite dev and preview serve security headers. The Render Blueprint in `render.yaml` configures the production headers, including HSTS for HTTPS. The static build includes CSP in both HTML documents, and hosts serving `dist/` should add the response-only protections separately. Serve the app document with `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY`. Serve `python-runner.html` with `Content-Security-Policy: frame-ancestors 'self'; sandbox allow-scripts` and `X-Frame-Options: SAMEORIGIN` so Dryrun can embed its own runner. Apply `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and the permissions policy in `vite.config.ts` on both routes. If you edit the inline runner broker, update its CSP SHA-256 hash to match the exact script.
 
 ## Project layout
 

@@ -192,7 +192,7 @@ test('Write can run an edited draft directly in Inspect', async ({ page }) => {
   await page.goto('/#write');
   await editor(page).fill('values = [2, 4]\nprint(sum(values))');
   await writeActions(page).getByRole('button', { name: 'Inspect', exact: true }).click();
-  await expect(page).toHaveURL(/#inspect$/, { timeout: 45000 });
+  await expect(page).toHaveURL(/#inspect$/, { timeout: 90000 });
   await last(page);
   await page.getByRole('tab', { name: 'Output' }).click();
   await expect(page.getByRole('tabpanel')).toContainText('6');
@@ -265,6 +265,7 @@ test('reorder visualizations by pointer and buttons, zoom and focus variables', 
 });
 
 test('mobile custom runs, retained draft, stale replay, syntax diagnostics', async ({ page }) => {
+  test.setTimeout(190000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#watch');
   await inspect(page);
@@ -275,7 +276,7 @@ test('mobile custom runs, retained draft, stale replay, syntax diagnostics', asy
   const code = 'arr = [3, 1, 2]\nprint(sorted(arr))';
   await editor(page).fill(code);
   await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
-  await expect(page.getByRole('slider', { name: 'Watch event' })).toBeVisible({ timeout: 45000 });
+  await expect(page.getByRole('slider', { name: 'Watch event' })).toBeVisible({ timeout: 90000 });
   await inspect(page);
   await last(page);
   await page.getByRole('navigation', { name: 'Workspace sections' }).getByRole('button', { name: 'State', exact: true }).click();
@@ -290,7 +291,7 @@ test('mobile custom runs, retained draft, stale replay, syntax diagnostics', asy
   await page.locator('header').getByRole('button', { name: 'Write', exact: true }).click();
   await expect(editor(page)).toContainText('if True print(1)');
   await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
-  await expect(page.getByText(/Line 1, column .*SyntaxError/)).toBeVisible();
+  await expect(page.getByText(/Line 1, column .*SyntaxError/)).toBeVisible({ timeout: 90000 });
   await expect(page.locator('.cm-error-line')).toBeVisible();
   await expect(page.locator('header').getByRole('button', { name: 'Watch', exact: true })).toBeVisible();
   await example(page, 'Heap');
@@ -346,9 +347,9 @@ test('live run and rapid seeking through a 3,600-step custom trace', async ({ pa
   await example(page, 'My code');
   await page.getByRole('checkbox', { name: 'Live run' }).check();
   await editor(page).fill('arr = [0]\nfor i in range(1800):\n    arr[0] = i\nprint(arr[0])');
-  await expect(page.getByText('Run ready', { exact: true })).toBeVisible({ timeout: 45000 });
+  await expect(page.getByText('Run ready', { exact: true })).toBeVisible({ timeout: 90000 });
   await inspect(page);
-  await expect.poll(async () => Number(await slider(page).getAttribute('max')), { timeout: 45000 }).toBeGreaterThan(3600);
+  await expect.poll(async () => Number(await slider(page).getAttribute('max')), { timeout: 90000 }).toBeGreaterThan(3600);
   const duration = await slider(page).evaluate(async (element: HTMLInputElement) => {
     const start = performance.now();
     const positions = [400, 2100, 300, 3490, 1790, 3500];

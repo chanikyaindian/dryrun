@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-const runtime = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
+const runtime = 'https://cdn.jsdelivr.net/pyodide/v0.29.5/full/';
 const policy = (dev = false) => [
   "default-src 'none'",
   "script-src 'self'",
@@ -24,7 +24,7 @@ function securityHeaders(): Plugin {
       response.setHeader('Referrer-Policy', 'no-referrer');
       response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
       if (pathname.endsWith('/python-runner.html')) {
-        response.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+        response.setHeader('Content-Security-Policy', "frame-ancestors 'self'; sandbox allow-scripts");
         response.setHeader('X-Frame-Options', 'SAMEORIGIN');
       } else if (pathname.endsWith('/') || pathname.endsWith('.html') || request.headers.accept?.includes('text/html')) {
         response.setHeader('Content-Security-Policy', policy(dev) + "; frame-ancestors 'none'");

@@ -4,8 +4,9 @@ import { parseTrace } from '../js/engine/trace-boundary.js';
 async function inspectOutput(page: Page, source: string) {
   await page.getByRole('button', { name: 'Write', exact: true }).click();
   await page.getByRole('textbox', { name: 'Python code' }).fill(source);
+  await expect(page.getByText('CPython 3.13.2', { exact: true })).toBeVisible({ timeout: 80000 });
   await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Inspect', exact: true }).click();
-  await expect(page.getByRole('slider', { name: 'Playback step' })).toBeVisible({ timeout: 40000 });
+  await expect(page.getByRole('slider', { name: 'Playback step' })).toBeVisible({ timeout: 90000 });
   await page.getByRole('button', { name: 'Last step' }).click();
   await page.getByRole('tab', { name: 'Output' }).click();
 }
@@ -16,9 +17,8 @@ test('the app has security headers and the sandbox blocks network and origin sto
   expect(response?.headers()['x-content-type-options']).toBe('nosniff');
   expect(response?.headers()['referrer-policy']).toBe('no-referrer');
   const requests: string[] = [];
-  await page.route('**/security-probe', route => {
-    requests.push(route.request().url());
-    return route.fulfill({ body: 'unexpected network access' });
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/security-probe') requests.push(request.url());
   });
   const result = await page.evaluate(() => new Promise<string>((resolve, reject) => {
     const frame = document.createElement('iframe');
@@ -26,43 +26,54 @@ test('the app has security headers and the sandbox blocks network and origin sto
     frame.hidden = true;
     frame.src = '/python-runner.html';
     const { port1, port2 } = new MessageChannel();
-    const timer = window.setTimeout(() => reject(Error('Security probe timed out')), 5000);
+    let phase = 'loading the iframe';
+    const timer = window.setTimeout(() => reject(Error('Security probe timed out while ' + phase)), 50000);
     port1.onmessage = ({ data }) => {
+      if (data.type === 'connected') {
+        phase = 'starting the worker';
+        startWorker();
+        return;
+      }
       if (data.type === 'ready') {
+        phase = 'probing browser permissions';
         port1.postMessage({ id: 1, src: 'probe' });
         return;
       }
       clearTimeout(timer);
       frame.remove();
       port1.close();
-      resolve(data.json);
+      if (data.type === 'result') resolve(data.json);
+      else reject(Error('Sandbox worker returned ' + data.type));
+    };
+    const startWorker = () => {
+      const target = location.origin + '/security-probe';
+      port1.postMessage({
+        wasm: new ArrayBuffer(0), stdlib: new ArrayBuffer(0), lock: new ArrayBuffer(0),
+        script: `
+          self.onmessage = () => {
+            postMessage({ type: 'ready', version: '0.0.0' });
+            self.onmessage = async ({ data: { id } }) => {
+              const blocked = async action => { try { await action(); return false; } catch { return true; } };
+              const denied = await Promise.all([
+                blocked(() => fetch(${JSON.stringify(target)})),
+                blocked(() => importScripts(${JSON.stringify(target)})),
+                blocked(() => new Promise((resolve, reject) => {
+                  const request = indexedDB.open('sandbox-probe');
+                  request.onsuccess = resolve;
+                  request.onerror = reject;
+                })),
+                blocked(() => caches.open('sandbox-probe')),
+              ]);
+              postMessage({ type: 'result', id, json: JSON.stringify(denied) });
+            };
+          };
+        `,
+      });
     };
     frame.addEventListener('load', () => {
+      phase = 'connecting to the broker';
       frame.contentWindow!.postMessage('dryrun-init', '*', [port2]);
     }, { once: true });
-    const target = location.origin + '/security-probe';
-    port1.postMessage({
-      wasm: new ArrayBuffer(0), stdlib: new ArrayBuffer(0), lock: new ArrayBuffer(0),
-      script: `
-        self.onmessage = () => {
-          postMessage({ type: 'ready', version: '0.0.0' });
-          self.onmessage = async ({ data: { id } }) => {
-            const blocked = async action => { try { await action(); return false; } catch { return true; } };
-            const denied = await Promise.all([
-              blocked(() => fetch(${JSON.stringify(target)})),
-              blocked(() => importScripts(${JSON.stringify(target)})),
-              blocked(() => new Promise((resolve, reject) => {
-                const request = indexedDB.open('sandbox-probe');
-                request.onsuccess = resolve;
-                request.onerror = reject;
-              })),
-              blocked(() => caches.open('sandbox-probe')),
-            ]);
-            postMessage({ type: 'result', id, json: JSON.stringify(denied) });
-          };
-        };
-      `,
-    });
     document.body.append(frame);
   }));
   expect(JSON.parse(result)).toEqual([true, true, true, true]);
@@ -70,7 +81,7 @@ test('the app has security headers and the sandbox blocks network and origin sto
 });
 
 test('custom runs use a fresh sandbox and render hostile class names as text', async ({ page }) => {
-  test.setTimeout(100000);
+  test.setTimeout(190000);
   await page.goto('/');
   await inspectOutput(page, `import random
 random.dryrun_probe = True
@@ -91,7 +102,7 @@ print(hasattr(random, 'dryrun_probe'))`);
 });
 
 test('the app rejects a tampered Python runtime download', async ({ page }) => {
-  await page.route('https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js', route =>
+  await page.route('https://cdn.jsdelivr.net/pyodide/v0.29.5/full/pyodide.js', route =>
     route.fulfill({ contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: 'throw Error("tampered");' }));
   await page.goto('/#write');
   await expect(page.getByText('Python unavailable', { exact: true })).toBeVisible({ timeout: 35000 });
