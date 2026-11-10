@@ -5,7 +5,7 @@ import { isHeap, kind, drawPoints, drawBits, drawNet, drawGrid, drawIv, heapTree
 const objs = new Map();
 
 export function drawStage(wrap, step, frame, index, previous, lastViewed, {
-  views, roles, topics, tree, speed, focus, omitNames = /** @type {string[]} */ ([]), omitReference = /** @type {string | number | undefined} */ (undefined),
+  views, roles, topics, tree, speed, focus, relevance, scene, withSummary, omitNames = /** @type {string[]} */ ([]), omitReference = /** @type {string | number | undefined} */ (undefined),
 }) {
   const frames = step.F.length > 1 ? [step.F[0], frame] : [frame];
   const refs = new Map();
@@ -13,12 +13,10 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
     if (!refs.has(id)) refs.set(id, []);
     if (!refs.get(id).includes(name)) refs.get(id).push(name);
   };
-  let strings = 0;
   frames.forEach(f => Object.entries(f.v).forEach(([name, value]) => {
     if (value?.r) add(value.r, name);
-    else if (typeof value === 'string' && value.length > 1 && value.length <= 80 && strings < 3) {
+    else if (typeof value === 'string' && value.length > 1 && value.length <= 80 && name === focus) {
       const id = 's:' + name;
-      if (!refs.has(id)) strings++;
       step.H[id] = { k: 'l', v: [...value] };
       add(id, name);
     }
@@ -33,7 +31,7 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
     }
   }
 
-  const objects = [...refs].map(([id, names]) => {
+  const candidates = [...refs].map(([id, names]) => {
     const heap = step.H[id];
     const heapName = names.find(name => isHeap(name, roles));
     const type = heap.k === 'o' ? 'card' : kind(heap, step, heapName || names[0], roles, topics);
@@ -42,9 +40,15 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
       const child = step.H[value?.r];
       return child?.k === 'o' || child?.v.some(item => step.H[(Array.isArray(item) ? item[1] : item)?.r]?.k === 'o');
     }));
-    return { id, names, heap, type, visible: views[type] && !(linked && views.nodes), heapTreeEnabled };
+    const score = relevance.get(String(id)) ?? 0;
+    const primary = String(id) === scene.id || (scene.kind === 'graph' && names.includes(scene.queue));
+    const priority = names.includes(focus) ? 5 : String(id) === scene.id || (type === 'net' && score) ? 3 :
+      primary ? 2 : score ? 1 + score / (1 + score) : 0;
+    return { id, names, heap, type, priority, visible: views[type] && !(linked && views.nodes), heapTreeEnabled };
   }).filter(object => object.id !== omitReference && !object.names.every(name => omitNames.includes(name)) && (object.visible || object.heapTreeEnabled))
-    .sort((a, b) => Number(a.names.includes(focus)) - Number(b.names.includes(focus))).slice(-8);
+    .sort((a, b) => b.priority - a.priority);
+  const relevant = candidates.filter(candidate => candidate.priority > 0);
+  const objects = (relevant.length || withSummary || relevance.size ? relevant : candidates.slice(0, 1)).slice(0, 8);
 
   const asInteger = value => Number.isSafeInteger(value) ? BigInt(value) :
     /^-?\d+$/.test(value?.p ?? '') ? BigInt(value.p) : undefined;
@@ -68,8 +72,9 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
     }
     return element;
   };
-  for (const { id, names, heap, type, heapTreeEnabled } of objects) {
+  for (const { id, names, heap, type, priority, heapTreeEnabled } of objects) {
     const element = container(id);
+    element.dataset.vizPriority = priority;
     element.classList.toggle('focused-card', names.includes(focus));
     element.toggleAttribute('data-zoomable', type === 'net');
     const label = names.join(', ');
@@ -78,7 +83,10 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
     else if (type === 'net') drawNet(element, label, heap, step, frames);
     else if (type === 'points') drawPoints(element, label, heap, step);
     else if (type === 'list') {
-      drawList(element, label, heap, pointers, id, step);
+      const searchPointers = scene.kind === 'search' ? (String(id) === scene.id
+        ? Object.entries(frame.v).filter(([name, value]) => scene.bounds.includes(name) && Number.isInteger(value) && value >= 0)
+        : []) : pointers;
+      drawList(element, label, heap, searchPointers, id, step);
       element._row.hidden = !views.list;
       if (heapTreeEnabled) heapTree(element, heap.v, names.some(name => /seg/.test(name)) ? 1 : 0, pointers, step.H);
       else element._tr?.remove();
@@ -95,7 +103,12 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
   if (views.nodes) drawGraph(wrap, step, frames, speed);
   else if (graphCard()) graphCard().style.display = 'none';
   const focusedNode = [...refs].find(([, names]) => names.includes(focus));
-  graphCard()?.classList.toggle('focused-card', Boolean(focusedNode && step.H[focusedNode[0]]?.k === 'o'));
+  const graph = graphCard();
+  if (graph) {
+    const focused = Boolean(focusedNode && step.H[focusedNode[0]]?.k === 'o');
+    graph.dataset.vizPriority = focused ? '5' : '3';
+    graph.classList.toggle('focused-card', focused);
+  }
   if (views.calls) drawCT(wrap, tree, index);
   else if (callCard()) callCard().style.display = 'none';
   const stageIsEmpty = !ids.size && (!graphCard() || graphCard().style.display === 'none') && (!callCard() || callCard().style.display === 'none');

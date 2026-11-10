@@ -20,6 +20,7 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
     const card = document.createElement('div');
     card.className = 'obj summary-card';
     card.dataset.vizId = 'summary';
+    card.dataset.vizPriority = '4';
     return card;
   });
   const model = desktop && views.list ? replay?.watch.backtracking : undefined;
@@ -59,6 +60,7 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
     drawStage(target, step, step.F.at(-1), index, replay.steps[index - 1], lastViewed.current, {
       views: hideDuplicateTree ? { ...views, nodes: false } : views,
       focus, speed, tree: replay.tree, roles: replay.roles, topics: replay.topics,
+      relevance: replay.watch.relevance, scene: replay.watch.scene, withSummary,
       omitNames: showDecision && model ? [model.names.path, ...model.names.input, ...model.names.results] : topicVisible ? topic?.variables : undefined,
       omitReference: shownGrid,
     });

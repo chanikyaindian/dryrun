@@ -122,8 +122,6 @@ export function TopicPanel({ view, cue, motion = false, speed = 560, showKey = f
   const facts = [...(view.facts ?? []), ...(cue?.facts ?? [])];
   const hasPointers = showKey && view.rows?.some(row => row.pointers);
   return <div className="topic-panel" ref={host} aria-label="Decision state" data-motion={motion}>
-    {facts.length > 0 && <dl className="topic-facts">{facts.map(([label, value]) =>
-      <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
     {view.heap && <HeapTree values={view.heap} active={cue?.active} />}
     {view.trie && <TrieTree nodes={view.trie} />}
     {view.ranges && <IntervalLanes ranges={view.ranges} />}
@@ -164,6 +162,8 @@ export function TopicPanel({ view, cue, motion = false, speed = 560, showKey = f
       {row.values.length > limit && <small>Showing entries {start + 1}–{start + visible.length} of {row.values.length}.</small>}
     </section>;
     })}
+    {facts.length > 0 && <dl className="topic-facts">{facts.map(([label, value]) =>
+      <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
     {hasPointers && <ul className="topic-array-key" aria-label="Array highlighting">
       <li><i data-key="pointer" />Pointer</li><li><i data-key="read" />Read</li><li><i data-key="write" />Changed</li>
       {view.rows?.some(row => row.window) && <li><i data-key="window" />In window</li>}

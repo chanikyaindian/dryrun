@@ -24,7 +24,7 @@ export type Beat = {
 };
 export type CallNode = { id: number; p?: number; k: number[]; born: number; end: number; lab: string; rv?: string };
 export type WatchModel = { scene: Scene; beats: Beat[]; currentNodes: Map<number, Atom>; sceneSteps: number[]; calls: CallNode[];
-  backtracking?: Backtracking; callPaths?: Map<number, string>; topic?: Topic };
+  relevance: Map<string, number>; backtracking?: Backtracking; callPaths?: Map<number, string>; topic?: Topic };
 type Candidate = { id: string; name: string; reads: number; writes: number; pairs: number; swaps: number; size: number; flat: boolean; grid: boolean; network?: Network };
 type HeapItem = Step['H'][string];
 const identifier = '[\\p{ID_Start}_][\\p{ID_Continue}]*';
@@ -35,6 +35,13 @@ const swapSource = /^\s*[^=]+\]\s*,\s*[^=]+\]\s*=\s*[^=]+\]\s*,\s*[^=]+\]/;
 const compareSource = new RegExp('^\\s*(?:if|elif|while)\\s+' + identifier + '\\[[^\\]]+\\]\\s*(?:<=|>=|==|!=|<|>)\\s*' + identifier + '\\[[^\\]]+\\]\\s*:', 'u');
 const binaryTarget = new RegExp('^\\s*(?:if|elif)\\s+(' + identifier + ')\\[\\s*(' + identifier + ')\\s*\\]\\s*==\\s*(' + identifier + ')\\s*:', 'u');
 const treeCompare = new RegExp('^\\s*(?:if|elif)\\s+(' + identifier + ')\\s*(<|>)\\s*(' + identifier + ')\\.(' + identifier + ')\\s*:', 'u');
+const sameValue = (a: unknown, b: unknown): boolean => {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((item, i) => sameValue(item, b[i]));
+  return Boolean(a && b && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
+};
+const evidence = (candidate: Candidate) => candidate.reads + candidate.writes * 3 + Number(Boolean(candidate.network));
+const byRelevance = (a: Candidate, b: Candidate) => evidence(b) - evidence(a) || b.size - a.size;
 const assignment = /^\s*[^#=]+(?:\+=|-=|\*=|\/=|\^=|&=|\|=|=(?!=))/;
 export const isAtom = (value: unknown): value is Atom => value === null || ['string', 'number', 'boolean'].includes(typeof value);
 export const scopeValue = (step: Step, key: string): Value | undefined => {
@@ -181,7 +188,7 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
         const delta = gridDelta(matrixRows(before, previous), matrixRows(item, step), step);
         if (delta.written.length) candidate.writes++;
         candidate.reads += delta.read.length;
-      } else if (item.v.length !== before.v.length) candidate.writes++;
+      } else if (item.v.length !== before.v.length || item.v.some((value, i) => !sameValue(value, before.v[i]))) candidate.writes++;
     }
   });
 
@@ -190,16 +197,25 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
   const graph = choices.find(candidate => candidate.network);
   const sort = choices.filter(candidate => candidate.swaps || candidate.pairs >= 2)
     .sort((a, b) => b.swaps - a.swaps || b.pairs - a.pairs)[0];
-  const array = choices.filter(candidate => candidate.flat)
-    .sort((a, b) => (b.reads + b.writes * 2 + Math.min(b.size, 20)) - (a.reads + a.writes * 2 + Math.min(a.size, 20)))[0];
+  const arrays = choices.filter(candidate => candidate.flat).sort(byRelevance);
   const orderedBounds = bounds.flatMap(([lo, hi, pivot]) => [[lo, hi, pivot], [hi, lo, pivot]] as [string, string, string][]);
-  const search = array && orderedBounds.find(([lo, hi, pivot]) => steps.some(step => {
-    const a = scopeValue(step, lo), b = scopeValue(step, hi), m = scopeValue(step, pivot);
-    return typeof a === 'number' && typeof b === 'number' && typeof m === 'number' && a <= b &&
-      Math.floor((a + b) / 2) === m && readIndices(step, array.id).includes(m);
-  }));
-  const generic = choices.filter(candidate => candidate.size)
-    .sort((a, b) => b.reads + b.writes * 2 + Math.min(b.size, 20) - (a.reads + a.writes * 2 + Math.min(a.size, 20)))[0];
+  const searchById = new Map<string, [string, string, string]>();
+  if (orderedBounds.length) for (const step of steps) {
+    for (const address of step.rd ?? []) {
+      const [id, offset] = address.split(':');
+      if (!candidates.get(id)?.flat || searchById.has(id)) continue;
+      const match = orderedBounds.find(([lo, hi, pivot]) => {
+        const a = scopeValue(step, lo), b = scopeValue(step, hi), m = scopeValue(step, pivot);
+        return typeof a === 'number' && typeof b === 'number' && typeof m === 'number' && a <= b &&
+          Math.floor((a + b) / 2) === m && m === Number(offset);
+      });
+      if (match) searchById.set(id, match);
+    }
+  }
+  const array = arrays.find(candidate => searchById.has(candidate.id));
+  const search = array && searchById.get(array.id);
+  const generic = choices.filter(candidate => candidate.size).sort(byRelevance)[0];
+  const relevance = new Map(choices.filter(evidence).map(candidate => [candidate.id, evidence(candidate)]));
   const linked = [...linkedClasses].sort((a, b) => b[1].count - a[1].count)[0];
   const lesson = interviewTrace(document, steps);
   const tracedBacktracking = recursive ? traceBacktracking(lines, steps) : undefined;
@@ -209,7 +225,7 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
   const scene: Scene = backtracking ? { kind: 'backtracking', name: 'Decision path' }
     : topic ? { kind: 'topic', name: topic.name, nodeClass: document.lessonNodeClass }
     : graph?.network && queue ? { kind: 'graph', id: graph.id, name: graph.name, queue, network: graph.network }
-    : search ? { kind: 'search', id: array.id, name: array.name, bounds: search,
+    : search && array ? { kind: 'search', id: array.id, name: array.name, bounds: search,
       target: lines.map(line => binaryTarget.exec(line)).find(match => match?.[1] === array.name && match[2] === search[2])?.[3] }
     : sort?.flat ? { kind: 'array', id: sort.id, name: sort.name }
     : linked ? { kind: 'linked', name: linked[1].name, nodeClass: linked[0] }
@@ -384,7 +400,7 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
   if (!beats.length) beats.push({ index: 0, kind: 'start', label: 'Ready to play.' });
   const last = steps.length - 1;
   if (last > beats.at(-1)!.index) beats.push({ index: last, kind: 'finish', label: 'Execution complete.' });
-  return { scene, beats, currentNodes, sceneSteps, calls: callForest, backtracking, callPaths: tracedBacktracking?.pathAtCall, topic };
+  return { scene, beats, currentNodes, sceneSteps, relevance, calls: callForest, backtracking, callPaths: tracedBacktracking?.pathAtCall, topic };
 }
 
 export function beatPosition(beats: Beat[], index: number) {

@@ -127,8 +127,8 @@ function App() {
   const watchStepsPreference = useRef(prefs.watchSteps);
   watchStepsPreference.current = prefs.watchSteps;
   const showStepNote = inspectFullscreen ? prefs.fullscreenSteps !== false : prefs.views.narration;
-  const hideTrivialTree = (inspectFullscreen || Boolean(replay?.source.lesson)) && !prefs.explicitTree && (replay?.tree?.total ?? 0) < 2;
-  const inspectViews = useMemo(() => hideTrivialTree ? { ...prefs.views, calls: false } : prefs.views, [hideTrivialTree, prefs.views]);
+  const inspectTree = prefs.views.calls && (prefs.explicitTree === true || Boolean(replay?.watch.calls.length));
+  const inspectViews = useMemo(() => ({ ...prefs.views, calls: inspectTree }), [inspectTree, prefs.views]);
   const draftHasChanges = replay?.source.key === myCode && draft !== replay.source.code;
   const lines = useMemo(() => replay?.source.code.split('\n') ?? [], [replay]);
   const sameSource = replay?.source.key === docKey && replay?.source.code === source;
@@ -316,7 +316,7 @@ function App() {
       ...(key === 'calls' ? { explicitTree: value } : { explicitStack: value }) }));
   }
   const toggle = (key: ViewKey) => {
-    if (key === 'calls' || key === 'stack') setCallView(key, !prefs.views[key]);
+    if (key === 'calls' || key === 'stack') setCallView(key, !inspectViews[key]);
     else setPrefs(old => ({ ...old, views: { ...old.views, [key]: !old.views[key] } }));
   };
   const watchTree = prefs.views.calls && ((!replay?.watch.backtracking && !replay?.source.lesson) || prefs.explicitTree === true);
@@ -438,7 +438,7 @@ function App() {
           </div>
           <p className="preset-summary">{activePreset ? presetDescriptions[activePreset] : 'Choose a preset or adjust individual settings.'}</p>
           <fieldset className="view-options"><legend>Learning aids</legend>
-            {primaryOptions.map(([key, label]) => <label key={key}><input type="checkbox" checked={prefs.views[key]} onChange={() => toggle(key)} />{label}</label>)}
+            {primaryOptions.map(([key, label]) => <label key={key}><input type="checkbox" checked={inspectViews[key]} onChange={() => toggle(key)} />{label}</label>)}
             <label><input type="checkbox" checked={prefs.follow} onChange={() => setPrefs(old => ({ ...old, follow: !old.follow }))} />Follow execution</label>
             {!mobile && <label><input type="checkbox" checked={prefs.inspector} onChange={() => setPrefs(old => ({ ...old, inspector: !old.inspector }))} />Inspector</label>}
             <small className="preset-summary">Call tree and call stack changes also apply in Watch.</small>

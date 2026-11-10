@@ -9,6 +9,7 @@ export function createStageControls(stage, announce, onInteract, onHidden) {
   const observers = new Map();
   const panModes = new Map();
   const viewports = new Map();
+  let customOrder = false;
   let drag = null;
   let dragFrame = 0;
 
@@ -19,7 +20,9 @@ export function createStageControls(stage, announce, onInteract, onHidden) {
   function arrange() {
     const byId = new Map(cards().map(card => [card.dataset.vizId, card]));
     for (const { dataset: { vizId } } of available()) if (!order.includes(vizId)) order.push(vizId);
-    const arranged = order.map(id => byId.get(id)).filter(Boolean);
+    const arranged = customOrder ? order.map(id => byId.get(id)).filter(Boolean) :
+      [...byId.values()].sort((a, b) => Number(b.dataset.vizPriority || 0) - Number(a.dataset.vizPriority || 0));
+    if (!customOrder) order.splice(0, order.length, ...arranged.map(card => card.dataset.vizId));
     let cursor = stage.firstElementChild;
     for (const card of arranged) {
       while (cursor && (cursor.hidden || cursor.style.display === 'none')) cursor = cursor.nextElementSibling;
@@ -39,6 +42,7 @@ export function createStageControls(stage, announce, onInteract, onHidden) {
 
   function move(id, target) {
     if (!target || id === target) return;
+    customOrder = true;
     const destination = order.indexOf(target);
     order.splice(order.indexOf(id), 1);
     order.splice(destination, 0, id);
@@ -235,6 +239,7 @@ export function createStageControls(stage, announce, onInteract, onHidden) {
       stage.focus({ preventScroll: true });
     },
     reset() {
+      customOrder = false;
       order.length = 0; positions.clear(); panModes.clear(); viewports.clear(); drag = null;
       for (const observer of observers.values()) observer.disconnect();
       observers.clear(); fitting.clear();

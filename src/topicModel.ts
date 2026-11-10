@@ -154,6 +154,37 @@ function stackRule(source: string): Rule | undefined {
   };
 }
 
+function lifoRule(source: string): Rule | undefined {
+  const append = expr('^%\\.append\\(');
+  const pop = expr('\\b%\\.pop\\(\\s*\\)');
+  const lines = source.split('\n');
+  const popped = new Set(lines.map(line => pop.exec(line)?.[1]).filter(Boolean));
+  const stack = lines.map(line => append.exec(line.trim())?.[1]).find(name => name && popped.has(name));
+  if (!stack) return;
+  return {
+    name: 'Stack', variables: [stack],
+    view(step, cue) {
+      const values = list(step, stack) ?? [];
+      return { rows: [{ name: stack + ' · top on right', values, active: cue?.active }],
+        facts: [['Stack size', String(values.length)]] };
+    },
+    event(before, after, line) {
+      const old = list(before, stack), next = list(after, stack);
+      const oldRef = local(before, stack), nextRef = local(after, stack);
+      if (!old || !next || !oldRef || typeof oldRef !== 'object' || !nextRef || typeof nextRef !== 'object' ||
+        oldRef.r !== nextRef.r || !old.slice(0, Math.min(old.length, next.length)).every((value, i) => same(value, next[i]))) return;
+      if (append.exec(line)?.[1] === stack && next.length === old.length + 1) {
+        const value = display(next.at(-1));
+        return event('Push', 'Push ' + value + ' onto the stack.', [next.length - 1], undefined, [['Pushed', value]]);
+      }
+      if (pop.exec(line)?.[1] === stack && old.length === next.length + 1) {
+        const value = display(old.at(-1));
+        return event('Pop', 'Pop ' + value + ' from the top of the stack.', [], undefined, [['Popped', value]]);
+      }
+    },
+  };
+}
+
 function heapRule(source: string): Rule | undefined {
   const push = expr('\\bheappush\\(\\s*%\\s*,');
   const pop = expr('\\bheappop\\(\\s*%\\s*\\)');
@@ -471,7 +502,7 @@ export function traceTopic(lines: string[], steps: Step[]): Topic | undefined {
   const statements = lines.map(line => line.replace(/\s+#.*$/, '').trim());
   const source = statements.join('\n');
   const rules = [windowRule, kadaneRule, insertionRule, knapsackRule, stackRule, distancesRule, heapRule, hashRule,
-    intervalRule, trieRule, pointersRule, prefixRule, bitsRule, setsRule];
+    intervalRule, trieRule, pointersRule, prefixRule, bitsRule, setsRule, lifoRule];
   for (const recognize of rules) {
     const rule = recognize(source);
     if (!rule) continue;
