@@ -480,9 +480,9 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
       {!desktop && caption}
       {replay && <div className="watch-actions">
         <button type="button" className="button primary compact" onClick={() => onInspect()}><ListTree />Inspect this moment</button>
-        {replay.source.key !== 'my-code' && <a className="button neutral compact" href={replay.source.lesson ? '#interview' : '#library'}
-          onClick={event => { event.preventDefault(); (replay.source.lesson ? onInterview : onExamples)(); }}>
-          {replay.source.lesson ? 'Back to study plan' : 'Back to examples'}</a>}
+        {replay.source.key !== 'my-code' && <a className="button neutral compact" href={replay.source.key.startsWith('interview:') ? '#interview' : '#library'}
+          onClick={event => { event.preventDefault(); (replay.source.key.startsWith('interview:') ? onInterview : onExamples)(); }}>
+          {replay.source.key.startsWith('interview:') ? 'Back to study plan' : 'Back to examples'}</a>}
         {canOpenOutput && (!central || !desktop) && <button type="button" className="button neutral compact" onClick={() => onInspect(true)}>Open printed output</button>}
         <details className="watch-view">
           <summary><Settings2 size={15} />View details</summary>

@@ -25,6 +25,7 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/600.css';
 
 const draftKey = 'dryrun.draft.v1';
+const interviewDraftKey = 'dryrun.interview-drafts.v1';
 const PythonEditor = lazy(() => import('./PythonEditor').then(module => ({ default: module.PythonEditor })));
 const myCode = 'my-code';
 const firstSample = exampleNames[0];
@@ -52,9 +53,15 @@ function readMode(): Mode {
 }
 
 function readInterviewLesson(mode: Mode) {
-  if (mode !== 'watch' && mode !== 'inspect') return;
+  if (mode !== 'watch' && mode !== 'inspect' && mode !== 'write') return;
   const slug = new URLSearchParams(location.hash.split('?')[1]).get('lesson');
   return slug ? interviewDocument('interview:' + slug) : undefined;
+}
+
+function lessonDraft(lesson: DocumentSource, drafts = readStored<Record<string, string>>(interviewDraftKey, {})): DocumentSource {
+  const code = drafts[lesson.key];
+  if (typeof code !== 'string' || code === lesson.code) return lesson;
+  return { key: lesson.key, title: lesson.title, description: lesson.description, code };
 }
 
 function Popover({ title, icon, children }: { title: string; icon: ReactNode; children: (close: () => void) => ReactNode }) {
@@ -76,6 +83,7 @@ function Popover({ title, icon, children }: { title: string; icon: ReactNode; ch
 
 function App() {
   const [draft, setDraft] = useState(readDraft);
+  const [interviewDrafts, setInterviewDrafts] = useState(() => readStored<Record<string, string>>(interviewDraftKey, {}));
   const [docKey, setDocKey] = useState<string>(() => {
     const initial = readMode();
     return readInterviewLesson(initial)?.key ?? (initial === 'write' || (initial === 'inspect' && readDraft()) ? myCode : firstSample);
@@ -114,8 +122,10 @@ function App() {
   const request = useRef(0);
   const lastRequest = useRef<DocumentSource | undefined>(undefined);
   const lesson = interviewDocument(docKey);
-  const exampleSource = lesson?.code ?? (docKey === myCode ? undefined : SAMPLES[docKey as keyof typeof SAMPLES]);
-  const source = exampleSource ?? draft;
+  const documentSource = useMemo(() => lesson ? lessonDraft(lesson, interviewDrafts) : {
+    key: docKey, code: SAMPLES[docKey as keyof typeof SAMPLES] ?? draft,
+  }, [docKey, draft, interviewDrafts, lesson]);
+  const source = documentSource.code;
   const visibleDocument = useRef({ key: docKey, code: source });
   visibleDocument.current = { key: docKey, code: source };
   const mobile = useSyncExternalStore(callback => { media.addEventListener('change', callback); return () => media.removeEventListener('change', callback); }, () => media.matches);
@@ -146,12 +156,12 @@ function App() {
     prefs.inspector === presets[preset].inspector &&
     Object.keys(prefs.views).every(key => prefs.views[key as ViewKey] === presets[preset].views[key as ViewKey]));
   const navigate = useCallback((target: Mode, source?: DocumentSource) => {
-    const suffix = (target === 'watch' || target === 'inspect') && source?.lesson ? '?lesson=' + source.key.slice('interview:'.length) : '';
+    const suffix = (target === 'watch' || target === 'inspect' || target === 'write') && source?.key.startsWith('interview:') ? '?lesson=' + source.key.slice('interview:'.length) : '';
     const hash = '#' + target + suffix;
     if (location.hash === hash) return;
     history.pushState(null, '', hash);
     modeRef.current = target;
-    if (target === 'write') setDocKey(myCode);
+    if (target === 'write') setDocKey(source?.key ?? myCode);
     setMode(target);
     pause();
   }, [pause]);
@@ -187,16 +197,18 @@ function App() {
     lastRequest.current = document;
     dispatch({ type: 'run' });
     try {
-      const trace = await Engine.run(document.code, { sample: document.key !== myCode });
+      const original = interviewDocument(document.key);
+      const sample = document.key !== myCode && (!original || document.code === original.code);
+      const trace = await Engine.run(document.code, { sample });
       if (id !== request.current) return;
       if (!trace) throw Error('Run interrupted. Select Run to try again.');
       const result = createReplay(id, document, trace);
-      if (document.key === myCode && result.steps[0]?.syntax) {
+      if (!sample && result.steps[0]?.syntax) {
         setDraftIssue({ source: document.code, step: result.steps[0] });
         dispatch({ type: 'error', error: '' });
         return;
       }
-      if (document.key === myCode) setDraftIssue(null);
+      if (!sample) setDraftIssue(null);
       setFocusedVariable('');
       const same = visibleDocument.current.key === document.key && visibleDocument.current.code === document.code;
       const showWatch = (destination === 'watch' || intro) && same && origin === modeRef.current && !result.steps[0]?.syntax;
@@ -223,8 +235,10 @@ function App() {
       const lesson = readInterviewLesson(target);
       if (!lesson) return;
       setDocKey(lesson.key);
-      visibleDocument.current = lesson;
-      if (lastRequest.current?.key !== lesson.key) void run(lesson, null, target === 'watch');
+      if (target === 'write') return;
+      const document = lessonDraft(lesson);
+      visibleDocument.current = document;
+      if (lastRequest.current?.key !== document.key || lastRequest.current.code !== document.code) void run(document, null, target === 'watch');
     };
     window.addEventListener('popstate', restore);
     window.addEventListener('hashchange', restore);
@@ -236,11 +250,11 @@ function App() {
 
   useEffect(() => {
     const initial = readMode();
-    if (initial === 'library' || initial === 'interview') return;
+    if (initial === 'library' || initial === 'interview' || initial === 'write') return;
     Engine.init();
     const lesson = readInterviewLesson(initial);
     if (lesson) {
-      void run(lesson, null, initial === 'watch');
+      void run(lessonDraft(lesson), null, initial === 'watch');
       return;
     }
     if (initial === 'watch' || (initial === 'inspect' && !readDraft())) {
@@ -248,14 +262,16 @@ function App() {
     }
   }, [run]);
   useEffect(() => {
-    if (!prefs.live || !writing || docKey !== myCode || !draft.trim()) return;
-    if (lastRequest.current?.key === myCode && lastRequest.current.code === draft) return;
+    if (!prefs.live || !writing || !source.trim() || source === lesson?.code) return;
+    const alreadyRun = () => lastRequest.current?.key === docKey && lastRequest.current.code === source;
+    if (alreadyRun()) return;
     const timer = window.setTimeout(() => {
-      if (lastRequest.current?.key !== myCode || lastRequest.current.code !== draft) void run({ key: myCode, code: draft }, null);
+      if (!alreadyRun()) void run(documentSource, null);
     }, 500);
     return () => clearTimeout(timer);
-  }, [docKey, draft, prefs.live, run, writing]);
+  }, [docKey, documentSource, lesson, prefs.live, run, source, writing]);
   useEffect(() => saveStored(draftKey, draft), [draft]);
+  useEffect(() => saveStored(interviewDraftKey, interviewDrafts), [interviewDrafts]);
   useEffect(() => saveStored(preferencesKey, prefs), [prefs]);
   useEffect(() => { document.documentElement.dataset.theme = prefs.dark ? 'dark' : 'light'; }, [prefs.dark]);
   useEffect(() => {
@@ -366,14 +382,14 @@ function App() {
   function runCurrent(destination: RunDestination = 'inspect') {
     if (!source.trim() || pending) return;
     if (writing && sameSource && !playback.error) {
-      if (destination === 'watch') navigate('watch');
+      if (destination === 'watch') navigate('watch', documentSource);
       else {
         inspectMoment();
         if (destination === 'inspect-fullscreen') enterInspectFullscreen();
       }
       return;
     }
-    void run(lesson ?? { key: docKey, code: source }, destination);
+    void run(documentSource, destination);
   }
   function runUpdatedDraft() {
     if (!draft.trim() || pending) return;
@@ -405,7 +421,7 @@ function App() {
     return () => window.removeEventListener('keydown', keyboard);
   });
 
-  const runMessage = pending ? (Engine.ready || exampleSource !== undefined ? 'Tracing execution…' : 'Starting Python…')
+  const runMessage = pending ? (Engine.ready || (docKey !== myCode && (!lesson || source === lesson.code)) ? 'Tracing execution…' : 'Starting Python…')
     : playback.error || (sameSource ? '' : replay ? (replay.source.key === docKey ? 'Code changed · Run to update' : 'Showing previous replay · Run to update') : '');
 
   function setNavbarHidden(hidden: boolean) {
@@ -462,7 +478,7 @@ function App() {
       onClick={() => setNavbarHidden(false)}><PanelTopOpen /></button>}
 
     <Library active={mode === 'library'} onExample={chooseSample} onWrite={openMyCode} onInterview={() => navigate('interview')} />
-    <InterviewCatalog active={mode === 'interview'} onBack={openExamples} onLesson={chooseDocument} />
+    <InterviewCatalog active={mode === 'interview'} onBack={openExamples} onLesson={document => { setWorkspaceTab('code'); navigate('write', document); }} />
     <nav className="workspace-tabs" hidden={!inspecting || inspectFullscreen} aria-label="Workspace sections">
       {workspaceTabs.map(([key, label, Icon]) => <button type="button" key={key} aria-current={workspaceTab === key ? 'page' : undefined}
         onClick={() => setWorkspaceTab(key)}><Icon />{label}</button>)}
@@ -477,7 +493,7 @@ function App() {
         onLayoutChanged={(layout, meta) => { if (!mobile && !writing && meta.isUserInteraction) { setHorizontal(layout); saveStored(layoutKey + 'horizontal', layout); } }}>
         <Panel id="editor" className="editor-panel" minSize="270px">
           <section className="pane editor-pane" aria-label="Code editor">
-            <div className="pane-header"><div className="pane-title"><CodeXml /><h2 tabIndex={-1}>{writing ? 'My code' : editorKey === myCode ? 'Run source' : inspectedSource?.title ?? editorKey}</h2><span className="badge">Python</span></div>
+            <div className="pane-header"><div className="pane-title"><CodeXml /><h2 tabIndex={-1}>{writing ? lesson?.title ?? 'My code' : editorKey === myCode ? 'Run source' : inspectedSource?.title ?? editorKey}</h2><span className="badge">Python</span></div>
               {writing
                 ? <label className="live-run"><input type="checkbox" checked={prefs.live} onChange={() => setPrefs(old => ({ ...old, live: !old.live }))} />Live run</label>
                 : <button type="button" className="button compact neutral" onClick={() => loadDraft(editorCode)}>Edit a copy</button>}
@@ -485,7 +501,8 @@ function App() {
             <Suspense fallback={<div className="python-editor editor-loading" role="status">Loading editor…</div>}>
               <PythonEditor key={editorKey + ':' + writing + ':' + editorRevision + ':' + (inspecting ? replay?.id : '')}
                 source={editorCode} readOnly={!writing} onChange={value => {
-                setDraft(value);
+                if (lesson) setInterviewDrafts(old => ({ ...old, [lesson.key]: value }));
+                else setDraft(value);
                 dispatch({ type: 'pause' });
               }} onRun={() => { if (writing) runCurrent(); }} step={inspecting || writing ? editorStep : undefined}
                 previous={(inspecting || writing) && editorMatches ? previous : undefined}
@@ -516,7 +533,7 @@ function App() {
                 <div className="pane-header">
                   <div className="pane-title"><Activity /><h2>Execution state</h2>{step?.done && <span className="badge success">Complete</span>}</div>
                   <div className="stage-actions">
-                    {!inspectFullscreen && replay?.source.lesson && <a href="#interview" className="button neutral compact inspect-study-back"
+                    {!inspectFullscreen && replay?.source.key.startsWith('interview:') && <a href="#interview" className="button neutral compact inspect-study-back"
                       onClick={event => { event.preventDefault(); navigate('interview'); }}>Back to study plan</a>}
                     {!inspectFullscreen && step?.done && step.out && <button type="button" className="button neutral compact"
                       onClick={() => inspectMoment(true)}>Open output</button>}

@@ -65,7 +65,7 @@ export const InterviewCatalog = memo(function InterviewCatalog({ active, onBack,
       <header className="interview-heading">
         <a className="interview-back" href="#" onClick={event => { event.preventDefault(); onBack(); }}><ArrowLeft size={15} />Examples</a>
         <h2 ref={heading} id="interview-title" tabIndex={-1}>Top Interview 150</h2>
-        <p>Browse the official study plan in order. Open a walkthrough to follow the Python solution in Dryrun.</p>
+        <p>Browse the official study plan in order. Open a problem to edit its Python solution in Write.</p>
         <div className="interview-meta">
           {ready < problems.length && <span><strong>{problems.length}</strong> problems</span>}
           <span><strong>{ready}</strong> runnable walkthroughs</span>

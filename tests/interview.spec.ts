@@ -35,7 +35,18 @@ test('the study plan keeps filters and restores the lesson button after Inspect 
   await expect(search).toBeFocused();
   await search.fill('#209');
   await search.press('Enter');
-  await page.getByRole('button', { name: 'Inspect this moment' }).click();
+  await expect(page).toHaveURL(/#write\?lesson=minimum-size-subarray-sum$/);
+  const editor = page.getByRole('textbox', { name: 'Python code' });
+  const original = interviewLessons['minimum-size-subarray-sum'].code;
+  await expect(editor).toContainText(original.split('\n')[0]);
+  await editor.fill(original + '\n# My notes');
+  await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Write' }).click();
+  await expect(page).toHaveURL(/#write$/);
+  await expect(editor).not.toContainText('# My notes');
+  await page.goBack();
+  await expect(editor).toContainText('# My notes');
+  await editor.fill(original);
+  await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Inspect', exact: true }).click();
   await page.getByText('View', { exact: true }).click();
   await page.getByRole('button', { name: 'Focus', exact: true }).click();
   await page.getByRole('link', { name: 'Back to study plan' }).click();
@@ -147,6 +158,8 @@ for (const start of [0, 25, 50, 75, 100, 125]) {
     const lessons: Record<string, { output: string }> = interviewLessons;
     for (const [, title, slug] of interviewCatalog.slice(start, start + 25)) {
       await page.getByRole('button', { name: 'Watch ' + title, exact: true }).click();
+      await expect(page).toHaveURL(new RegExp('#write\\?lesson=' + slug + '$'));
+      await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Watch', exact: true }).click();
       await expect(page).toHaveURL(new RegExp('#watch\\?lesson=' + slug + '$'));
       await expect(page.getByRole('heading', { name: String(title), exact: true })).toBeVisible();
       const landmark = page.getByRole('combobox', { name: 'Jump to landmark' });
