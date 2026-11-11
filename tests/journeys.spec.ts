@@ -45,16 +45,14 @@ test('prediction reveals the next actual event and Inspect can jump between visi
   await expect(slider).toHaveValue(String(first));
 });
 
-test('the Write page offers Watch and Inspect and protects the draft when editing a sample', async ({ page }) => {
+test('the Write page orders its three run actions and protects the draft when editing a sample', async ({ page }) => {
   await page.context().route('https://cdn.jsdelivr.net/**', route => route.abort());
   await page.goto('/#write');
   const editor = page.getByLabel('Python code', { exact: true });
   const actions = page.getByRole('complementary', { name: 'Run your Python' });
-  await expect(actions.getByRole('button', { name: 'Watch', exact: true })).toBeDisabled();
-  await actions.getByRole('button', { name: 'Try Bubble sort' }).click();
-  await expect(editor).toContainText('arr = [5, 2, 9, 1, 6]');
-  await expect(actions.getByRole('button', { name: 'Watch', exact: true })).toBeEnabled();
-  await expect(actions.getByRole('button', { name: 'Try Bubble sort' })).toHaveCount(0);
+  await expect(actions.getByRole('button')).toHaveText(['Inspect fullscreen', 'Inspect', 'Watch']);
+  for (const action of await actions.getByRole('button').all()) await expect(action).toBeDisabled();
+  await expect(page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button')).toHaveText(['Examples', 'Write', 'Inspect', 'Inspect fullscreen', 'Watch']);
   await editor.fill('print("draft")');
   await expect(actions.getByRole('button', { name: 'Inspect', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Examples', exact: true }).click();

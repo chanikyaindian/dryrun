@@ -188,11 +188,17 @@ test('the main navbar toggle works across Examples, Watch, Inspect and Write', a
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
-test('Write can run an edited draft directly in Inspect', async ({ page }) => {
+test('Write can run an edited draft directly in fullscreen Inspect', async ({ page }) => {
   await page.goto('/#write');
   await editor(page).fill('values = [2, 4]\nprint(sum(values))');
-  await writeActions(page).getByRole('button', { name: 'Inspect', exact: true }).click();
+  await writeActions(page).getByRole('button', { name: 'Inspect fullscreen', exact: true }).click();
   await expect(page).toHaveURL(/#inspect$/, { timeout: 90000 });
+  await expect(page.getByRole('dialog', { name: 'Inspect fullscreen' })).toBeVisible();
+  await page.getByRole('button', { name: 'Exit Inspect fullscreen' }).click();
+  const navigation = page.getByRole('navigation', { name: 'Dryrun pages' });
+  await navigation.getByRole('button', { name: 'Inspect fullscreen' }).click();
+  await expect(page.getByRole('dialog', { name: 'Inspect fullscreen' })).toBeVisible();
+  await page.getByRole('button', { name: 'Exit Inspect fullscreen' }).click();
   await last(page);
   await page.getByRole('tab', { name: 'Output' }).click();
   await expect(page.getByRole('tabpanel')).toContainText('6');
@@ -233,6 +239,8 @@ test('reorder visualizations by pointer and buttons, zoom and focus variables', 
   await page.goto('/#watch');
   await example(page, 'BFS with queue');
   await last(page);
+  await expect(page.locator('#stage > [data-viz-id]:visible')).toHaveCount(2);
+  await page.getByRole('button', { name: /Show supporting visuals/ }).click();
   const cards = page.locator('#stage > [data-viz-id]:visible');
   const order = () => cards.evaluateAll(elements => elements.map(element => (element as HTMLElement).dataset.vizId!));
   const before = await order();

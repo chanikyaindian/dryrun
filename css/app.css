@@ -131,6 +131,7 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; width: 15px; he
 .change-list code { background: var(--warn-soft); color: var(--warning); font: 11px/1.4 var(--mono); padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
 
 .stage-shell { flex: 1; min-height: 0; display: flex; }
+.supporting-visuals { align-self: flex-start; margin: 5px 12px; }
 .visual-stage { background-color: var(--panel-soft); background-image: linear-gradient(#a1b1e137 1px, transparent 1px), linear-gradient(90deg, #a1b1e137 1px, transparent 1px); background-size: 20px 20px; overflow: auto; padding: 13px; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 11px; }
 .visual-stage.void::before { content: 'Arrays, graphs and other values appear as your code runs.'; text-align: center; color: var(--mu); margin: auto; max-width: 250px; padding: 15px; }
 .visual-stage.void[data-hidden-cards]::before { content: 'All current visualizations are hidden. Show one from the list above.'; }

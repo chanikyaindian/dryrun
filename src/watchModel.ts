@@ -1,4 +1,4 @@
-import { buildCallForest, netOf } from '../js/views/structures.js';
+import { buildCallForest, kind, netOf } from '../js/views/structures.js';
 import { rp } from '../js/views/basic.js';
 import type { DocumentSource, Step, Value } from './workspace';
 import { interviewTrace } from './interviewTrace';
@@ -8,29 +8,30 @@ import { traceTopic, type Topic, type TopicEvent } from './topicModel';
 type Atom = string | number | boolean | null;
 export type Network = { N: Atom[]; E: [Atom, Atom, Atom][]; dir: boolean };
 export type Scene = {
-  kind: 'array' | 'search' | 'graph' | 'grid' | 'linked' | 'recursion' | 'backtracking' | 'topic' | 'value';
+  kind: 'array' | 'search' | 'queue' | 'graph' | 'grid' | 'linked' | 'recursion' | 'backtracking' | 'topic' | 'value';
   name: string; id?: string; bounds?: [string, string, string]; queue?: string; network?: Network;
   nodeClass?: string;
   target?: string;
   fallback?: boolean;
+  shape?: 'points' | 'iv';
 };
 export type Beat = {
   index: number; label: string;
   kind: 'start' | 'compare' | 'swap' | 'write' | 'link' | 'bounds' | 'probe' | 'dequeue' | 'enqueue' | 'call' | 'return' | 'output' | 'error' | 'finish' | 'topic' | Decision['kind'];
   decision?: Decision;
   topic?: TopicEvent;
-  cells?: number[]; grid?: { read: string[]; written: string[] }; node?: Atom; edge?: [Atom, Atom];
+  cells?: number[]; entries?: unknown[]; grid?: { read: string[]; written: string[] }; node?: Atom; edge?: [Atom, Atom];
   link?: { from: string; field: string; to?: string };
 };
 export type CallNode = { id: number; p?: number; k: number[]; born: number; end: number; lab: string; rv?: string };
 export type WatchModel = { scene: Scene; beats: Beat[]; currentNodes: Map<number, Atom>; sceneSteps: number[]; calls: CallNode[];
-  relevance: Map<string, number>; backtracking?: Backtracking; callPaths?: Map<number, string>; topic?: Topic };
+  relevance: Map<string, number>; indexNames: Map<string, Set<string>>; backtracking?: Backtracking; callPaths?: Map<number, string>; topic?: Topic };
 type Candidate = { id: string; name: string; reads: number; writes: number; pairs: number; swaps: number; size: number; flat: boolean; grid: boolean; network?: Network };
 type HeapItem = Step['H'][string];
 const identifier = '[\\p{ID_Start}_][\\p{ID_Continue}]*';
 const midpoint = new RegExp('^\\s*(' + identifier + ')\\s*=\\s*\\(\\s*(' + identifier + ')\\s*\\+\\s*(' + identifier + ')\\s*\\)\\s*(?://\\s*2|>>\\s*1)\\b', 'u');
 const queueRead = new RegExp('^\\s*(' + identifier + ')\\s*=\\s*(' + identifier + ')\\s*\\.\\s*(?:popleft\\(\\s*\\)|pop\\(\\s*0\\s*\\))', 'u');
-const neighbors = new RegExp('^\\s*(?:async\\s+)?for\\s+' + identifier + '\\s+in\\s+(' + identifier + ')\\s*(?:\\[|\\.get\\()', 'u');
+const neighbors = new RegExp('^\\s*(?:async\\s+)?for\\s+' + identifier + '\\s+in\\s+(' + identifier + ')\\s*(?:\\[|\\.get\\()\\s*(' + identifier + ')', 'u');
 const swapSource = /^\s*[^=]+\]\s*,\s*[^=]+\]\s*=\s*[^=]+\]\s*,\s*[^=]+\]/;
 const compareSource = new RegExp('^\\s*(?:if|elif|while)\\s+' + identifier + '\\[[^\\]]+\\]\\s*(?:<=|>=|==|!=|<|>)\\s*' + identifier + '\\[[^\\]]+\\]\\s*:', 'u');
 const binaryTarget = new RegExp('^\\s*(?:if|elif)\\s+(' + identifier + ')\\[\\s*(' + identifier + ')\\s*\\]\\s*==\\s*(' + identifier + ')\\s*:', 'u');
@@ -114,12 +115,19 @@ export function searchState(step: Step, scene: Scene) {
 export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: string; s: number; lab?: string; rv?: string }[]): WatchModel {
   const source = document.code;
   const lines = source.split('\n');
+  const subscript = new RegExp('(' + identifier + ')\\s*\\[([^\\[\\]\\n]+)\\]', 'gu');
+  const indexToken = new RegExp(identifier, 'gu');
+  const indexedLines = lines.map(line => [...line.matchAll(subscript)].map(([, collection, expression]) =>
+    ({ collection, indices: expression.match(indexToken) ?? [] })));
+  const indexNames = new Map<string, Set<string>>();
   const bounds = lines.flatMap(line => {
     const match = midpoint.exec(line);
     return match ? [[match[2], match[3], match[1]] as [string, string, string]] : [];
   });
   const queueLines = lines.map(line => queueRead.exec(line));
-  const graphNames = new Set(lines.flatMap(line => neighbors.exec(line)?.[1] ?? []));
+  const traversalLines = lines.map(line => neighbors.exec(line));
+  const graphNames = new Set(traversalLines.flatMap(match => match?.[1] ?? []));
+  const traversalVotes = new Map<string, number>();
   const candidates = new Map<string, Candidate>();
   const queueVotes = new Map<string, number>();
   const linkedClasses = new Map<string, { name: string; count: number }>();
@@ -150,16 +158,31 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
         }
       }
     }
+    const traversal = previous && traversalLines[previous.l - 1];
+    if (previous && traversal) {
+      const id = ref(scopeValue(previous, traversal[1]));
+      const node = scopeValue(previous, traversal[2]);
+      if (id && candidates.get(id)?.network?.N.some(value => Object.is(value, node))) {
+        traversalVotes.set(id, (traversalVotes.get(id) ?? 0) + 1);
+      }
+    }
     const pop = previous && queueLines[previous.l - 1];
     if (pop) {
       const id = ref(scopeValue(previous, pop[2]));
       const before = id ? previous.H[id] : undefined, after = id ? step.H[id] : undefined;
       if (sequence(before) && sequence(after) && before.v.length === after.v.length + 1 &&
           before.v.slice(1).every((value, i) => Object.is(value, after.v[i]))) {
-        queueVotes.set(pop[2], (queueVotes.get(pop[2]) ?? 0) + 1);
+        if (id) queueVotes.set(id, (queueVotes.get(id) ?? 0) + 1);
       }
     }
     if (!previous) return;
+    for (const { collection, indices } of indexedLines[previous.l - 1] ?? []) {
+      const id = ref(scopeValue(previous, collection));
+      if (!id || !candidates.has(id)) continue;
+      let names = indexNames.get(id);
+      if (!names) indexNames.set(id, names = new Set());
+      for (const name of indices) if (Number.isInteger(scopeValue(previous, name))) names.add(name);
+    }
     const visited = new Set<string>();
     for (const read of step.rd ?? []) {
       const [id] = read.split(':');
@@ -193,8 +216,10 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
   });
 
   const choices = [...candidates.values()];
-  const queue = [...queueVotes].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const graph = choices.find(candidate => candidate.network);
+  const queueId = [...queueVotes].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const queue = queueId ? candidates.get(queueId) : undefined;
+  const graph = choices.filter(candidate => candidate.network)
+    .sort((a, b) => (traversalVotes.get(b.id) ?? 0) - (traversalVotes.get(a.id) ?? 0))[0];
   const sort = choices.filter(candidate => candidate.swaps || candidate.pairs >= 2)
     .sort((a, b) => b.swaps - a.swaps || b.pairs - a.pairs)[0];
   const arrays = choices.filter(candidate => candidate.flat).sort(byRelevance);
@@ -215,6 +240,8 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
   const array = arrays.find(candidate => searchById.has(candidate.id));
   const search = array && searchById.get(array.id);
   const generic = choices.filter(candidate => candidate.size).sort(byRelevance)[0];
+  const firstMatrix = generic?.grid ? steps.find(step => matrixRows(step.H[generic.id], step)) : undefined;
+  const shape = generic && firstMatrix ? kind(firstMatrix.H[generic.id], firstMatrix, generic.name, new Set(), new Set()) : undefined;
   const relevance = new Map(choices.filter(evidence).map(candidate => [candidate.id, evidence(candidate)]));
   const linked = [...linkedClasses].sort((a, b) => b[1].count - a[1].count)[0];
   const lesson = interviewTrace(document, steps);
@@ -224,13 +251,14 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
   const firstTopicEvent = topic?.events.keys().next().value;
   const scene: Scene = backtracking ? { kind: 'backtracking', name: 'Decision path' }
     : topic ? { kind: 'topic', name: topic.name, nodeClass: document.lessonNodeClass }
-    : graph?.network && queue ? { kind: 'graph', id: graph.id, name: graph.name, queue, network: graph.network }
+    : graph?.network && traversalVotes.has(graph.id) ? { kind: 'graph', id: graph.id, name: graph.name, queue: queue?.name, network: graph.network }
+    : queue ? { kind: 'queue', id: queue.id, name: queue.name }
     : search && array ? { kind: 'search', id: array.id, name: array.name, bounds: search,
       target: lines.map(line => binaryTarget.exec(line)).find(match => match?.[1] === array.name && match[2] === search[2])?.[3] }
     : sort?.flat ? { kind: 'array', id: sort.id, name: sort.name }
     : linked ? { kind: 'linked', name: linked[1].name, nodeClass: linked[0] }
     : recursive && calls.length ? { kind: 'recursion', name: 'Call tree' }
-    : generic ? { kind: generic.flat ? 'array' : generic.grid ? 'grid' : 'value', id: generic.id, name: generic.name, fallback: true }
+    : generic ? { kind: generic.flat ? 'array' : generic.grid ? 'grid' : 'value', id: generic.id, name: generic.name, fallback: true, shape: shape === 'points' || shape === 'iv' ? shape : undefined }
     : { kind: 'value', name: 'Execution' };
 
   const callForest: CallNode[] = scene.kind === 'recursion' || backtracking || (lesson && recursive) ? buildCallForest(calls) : [];
@@ -313,6 +341,22 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
       }
       if (current !== undefined) currentNodes.set(index, current);
     }
+    if (scene.kind === 'graph' && !scene.queue && previous) {
+      const traversal = traversalLines[previous.l - 1];
+      const node = traversal && scopeValue(previous, traversal[2]);
+      if (traversal && ref(scopeValue(previous, traversal[1])) === scene.id && isAtom(node) && scene.network?.N.includes(node)) {
+        if (!Object.is(current, node)) action = { kind: 'probe', node, label: 'Explore the neighbors of ' + String(node) + '.' };
+        current = node;
+      }
+      if (current !== undefined) currentNodes.set(index, current);
+    }
+    if (scene.kind === 'queue' && previous && sequence(before) && sequence(after)) {
+      if (queueLines[previous.l - 1] && before.v.length === after.v.length + 1 && before.v.slice(1).every((value, i) => Object.is(value, after.v[i]))) {
+        action = { kind: 'dequeue', node: before.v[0] as Atom, label: 'Remove ' + rp(previous.H, before.v[0]) + ' from the front.' };
+      } else if (after.v.length === before.v.length + 1 && before.v.every((value, i) => Object.is(value, after.v[i]))) {
+        action = { kind: 'enqueue', node: after.v.at(-1) as Atom, label: 'Add ' + rp(step.H, after.v.at(-1)) + ' to the back.' };
+      }
+    }
     if (scene.kind === 'search' && previous && after) {
       const [lo, hi, pivot] = searchState(step, scene), [oldLo, oldHi] = searchState(previous, scene);
       if (lo !== undefined && hi !== undefined && oldLo !== undefined && oldHi !== undefined && (lo !== oldLo || hi !== oldHi)) {
@@ -339,25 +383,33 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
       const grid = gridDelta(oldRows, rows, step);
       if (grid.written.length) {
         const target = grid.written[0].replace(':', ', ');
+        const rowIndex = Number(grid.written[0].split(':')[0]);
+        const coordinate = scene.shape === 'points' ? rows?.[rowIndex]?.values : undefined;
         const readCell = (address: string, table: typeof rows) => {
           const [row, column] = address.split(':').map(Number);
           return table?.[row]?.values[column];
         };
         const result = readCell(grid.written[0], rows), [a, b] = grid.read.map(address => readCell(address, oldRows));
         const arithmetic = grid.read.length === 2 && line.includes('+') && typeof a === 'number' && typeof b === 'number' && a + b === result;
-        action = { kind: 'write', grid, label: grid.written.length === 1 ? 'Update cell [' + target + '] to ' + rp(step.H, result) +
+        action = { kind: 'write', grid, label: coordinate ? 'Move point ' + rowIndex + ' to (' + coordinate.join(', ') + ').' :
+          grid.written.length === 1 ? 'Update cell [' + target + '] to ' + rp(step.H, result) +
           (arithmetic ? ' by adding ' + a + ' and ' + b + '.' : '.') : 'Update ' + grid.written.length + ' cells.' };
       }
     } else if (scene.kind === 'value' && previous) {
-      if (before && after && before.v.length !== after.v.length) {
+      if (before && after && (after.k === 'd' || after.k === 'o')) {
+        const old = new Map(fields(before)), next = new Map(fields(after));
+        const edited = [...next].filter(([key, value]) => !old.has(key) || !sameValue(old.get(key), value));
+        const removed = [...old.keys()].filter(key => !next.has(key));
+        const [key, value] = edited[0] ?? [];
+        if (edited.length) action = { kind: 'write', entries: edited.map(([name]) => name), label: 'Set ' + scene.name + '[' + rp(step.H, key) + '] to ' + rp(step.H, value) + '.' };
+        else if (removed.length) action = { kind: 'write', label: 'Remove ' + rp(previous.H, removed[0]) + ' from ' + scene.name + '.' };
+      } else if (before && after && after.k === 's' && before.v.every(isAtom) && after.v.every(isAtom)) {
+        const old = new Set(before.v), next = new Set(after.v);
+        const added = after.v.filter(value => !old.has(value)), removed = before.v.filter(value => !next.has(value));
+        if (added.length) action = { kind: 'write', entries: added, label: 'Add ' + rp(step.H, added[0]) + ' to ' + scene.name + '.' };
+        else if (removed.length) action = { kind: 'write', label: 'Remove ' + rp(previous.H, removed[0]) + ' from ' + scene.name + '.' };
+      } else if (before && after && before.v.length !== after.v.length) {
         action = { kind: 'write', label: scene.name + ' now holds ' + after.v.length + ' ' + (after.v.length === 1 ? 'entry.' : 'entries.') };
-      } else if (before && after && (after.k === 'd' || after.k === 'o')) {
-        const old = new Map(fields(before));
-        const edit = fields(after).find(([key, value]) => {
-          const prior = old.get(key);
-          return !old.has(key) || (isAtom(value) && !Object.is(prior, value)) || ref(prior) !== ref(value);
-        });
-        if (edit) action = { kind: 'write', label: 'Set ' + scene.name + '[' + rp(step.H, edit[0]) + '] to ' + rp(step.H, edit[1]) + '.' };
       }
     } else if (scene.kind === 'backtracking') {
       const decision = backtracking?.decisions.get(index);
@@ -400,7 +452,7 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
   if (!beats.length) beats.push({ index: 0, kind: 'start', label: 'Ready to play.' });
   const last = steps.length - 1;
   if (last > beats.at(-1)!.index) beats.push({ index: last, kind: 'finish', label: 'Execution complete.' });
-  return { scene, beats, currentNodes, sceneSteps, relevance, calls: callForest, backtracking, callPaths: tracedBacktracking?.pathAtCall, topic };
+  return { scene, beats, currentNodes, sceneSteps, relevance, indexNames, calls: callForest, backtracking, callPaths: tracedBacktracking?.pathAtCall, topic };
 }
 
 export function beatPosition(beats: Beat[], index: number) {

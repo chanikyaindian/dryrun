@@ -105,7 +105,6 @@
 .interview-meta strong { font-family: var(--mono); color: var(--ink); }
 .interview-tools { position: sticky; top: 0; z-index: 2; background: var(--bg); border-block: 1px solid var(--line); padding: 10px 0; margin-bottom: 8px; }
 .interview-tools .catalog-search { flex: 1 1 250px; }
-.write-example { margin-top: 8px; }
 .interview-topic, .interview-filter { display: flex; align-items: center; gap: 6px; }
 .interview-topic select { max-width: min(225px, 65vw); }
 .interview-group { margin: 16px 0 22px; }
@@ -126,4 +125,14 @@
   .interview-difficulty { grid-column: 2; grid-row: 2; }
   .interview-watch, .interview-status { grid-column: 3; grid-row: 1 / span 2; }
   .interview-tools .catalog-search { flex-basis: 100%; }
+}
+
+.product-nav button:disabled { opacity: .45; }
+@media (761px <= width <= 1000px) {
+  .topbar { padding-inline: 16px; gap: 8px; }
+  .product-nav button { padding-inline: 7px; gap: 4px; font-size: 12px; }
+}
+@media (max-width: 460px) {
+  .product-nav button { padding-inline: 3px; font-size: 11px; }
+  .product-nav button svg { display: none; }
 }

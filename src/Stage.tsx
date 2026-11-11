@@ -15,6 +15,9 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
   const lastViewed = useRef<Replay['steps'][number] | undefined>(undefined);
   const lastFocus = useRef('');
   const [notice, announce] = useState('');
+  const [supportingRun, setSupportingRun] = useState<number>();
+  const [supportCount, setSupportCount] = useState(0);
+  const showSupporting = supportingRun !== undefined && supportingRun === replay?.id;
   const [hidden, setHidden] = useState<[string, string][]>([]);
   const [summary] = useState(() => {
     const card = document.createElement('div');
@@ -47,6 +50,7 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
     const target = host.current!;
     if (run.current !== replay?.id) {
       resetStage(target);
+      setSupportCount(0);
       controls.current?.reset();
       lastViewed.current = undefined;
       lastFocus.current = '';
@@ -57,13 +61,14 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
     if (withSummary && summary.parentElement !== target) target.prepend(summary);
     else if (!withSummary) summary.remove();
     const step = { ...current, H: { ...current.H } };
-    drawStage(target, step, step.F.at(-1), index, replay.steps[index - 1], lastViewed.current, {
+    const count = drawStage(target, step, step.F.at(-1), index, replay.steps[index - 1], lastViewed.current, {
       views: hideDuplicateTree ? { ...views, nodes: false } : views,
       focus, speed, tree: replay.tree, roles: replay.roles, topics: replay.topics,
-      relevance: replay.watch.relevance, scene: replay.watch.scene, withSummary,
+      relevance: replay.watch.relevance, indexNames: replay.watch.indexNames, scene: replay.watch.scene, withSummary, showSupporting,
       omitNames: showDecision && model ? [model.names.path, ...model.names.input, ...model.names.results] : topicVisible ? topic?.variables : undefined,
       omitReference: shownGrid,
     });
+    setSupportCount(count);
     controls.current?.refresh();
     lastViewed.current = step;
     if (focus && lastFocus.current !== focus) {
@@ -72,10 +77,15 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
       if (card) target.scrollTop += card.getBoundingClientRect().top - target.getBoundingClientRect().top - 12;
     }
     lastFocus.current = focus;
-  }, [replay, index, views, focus, speed, visible, model, showDecision, topic, topicVisible, withSummary, hideDuplicateTree, shownGrid, summary]);
+  }, [replay, index, views, focus, speed, visible, model, showDecision, topic, topicVisible, withSummary, showSupporting, hideDuplicateTree, shownGrid, summary]);
 
   return <>
     <div className="stage-content">
+      {(supportCount > 0 || showSupporting) && <button type="button" className="button neutral compact supporting-visuals"
+        aria-expanded={showSupporting} aria-controls="stage"
+        onClick={() => setSupportingRun(showSupporting ? undefined : replay?.id)}>
+        {showSupporting ? 'Hide supporting visuals' : 'Show supporting visuals (' + supportCount + ')'}
+      </button>}
       {hidden.length > 0 && <details className="hidden-visualizations">
         <summary>Hidden visualizations ({hidden.length})</summary>
         <div>{hidden.map(([id, label]) => <button key={id} type="button" className="button neutral compact"

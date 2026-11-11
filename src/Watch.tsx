@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, CodeXml, ListTree, Maximize, Minimize, Minus, Pause, Play, Plus, RotateCcw, Settings2 } from 'lucide-react';
 import { rp } from '../js/views/basic.js';
-import { netOf } from '../js/views/structures.js';
+import { kind, netOf, pointLayout } from '../js/views/structures.js';
 import { beatPosition, isAtom, linkedNodes, matrixRows, readIndices, scopeValue, searchState, watchLandmarks, type Beat, type Network, type Scene } from './watchModel';
 import type { Replay, Step } from './workspace';
 import { Prediction } from './Prediction';
@@ -88,6 +88,7 @@ function ArrayScene({ replay, step, beat, moving, speed, allSteps }: { replay: R
         const active = Boolean(beat?.cells?.includes(index));
         const outside = range && (index < range[0] || index > range[1]);
         const probe = scene.kind === 'search' && pivot === index && !outside;
+        const roles = [range?.[0] === index ? 'low' : '', probe ? 'mid' : '', range?.[1] === index ? 'high' : ''].filter(Boolean);
         const glyph = bars ? {
           height: Math.abs(Number(value) * scale) / scaledSpan * 84 + '%',
           ...(Number(value) < 0 ? { top: zero + '%' } : { bottom: (100 - zero) + '%' }),
@@ -98,7 +99,7 @@ function ArrayScene({ replay, step, beat, moving, speed, allSteps }: { replay: R
             <span title={format(value)}>{isAtom(value) ? format(value) : rp(step.H, value)}</span>
           </div></div>
           <span className="array-index">{index}</span>
-          <span className="array-role">{probe ? 'mid' : range?.[0] === index && range?.[1] === index ? 'range' : range?.[0] === index ? 'low' : range?.[1] === index ? 'high' : ''}</span>
+          <span className="array-role">{roles.join(' · ')}</span>
         </div>;
       })}
     </div>
@@ -121,7 +122,7 @@ function GraphScene({ scene, step, current, processed, beat, moving, speed, zoom
   const extras = graph?.N.filter(node => !layout.has(node)) ?? [];
   const point = (node: Network['N'][number]) => layout.get(node) ??
     [160 + (extras.indexOf(node) + 1) * 320 / (extras.length + 1), 186];
-  const queueRef = scopeValue(step, scene.queue!);
+  const queueRef = scene.queue ? scopeValue(step, scene.queue) : undefined;
   const queue = queueRef && typeof queueRef === 'object' && queueRef.r ? step.H[String(queueRef.r)]?.v ?? [] : [];
   return <div className="graph-scene" ref={host}>
     <div className="diagram-window">
@@ -155,19 +156,23 @@ function GraphScene({ scene, step, current, processed, beat, moving, speed, zoom
         </g>
       </svg>
     </div>
-    <div className="watch-queue" aria-label="Queue">
-      <span>Queue · front on left</span>
-      {queue.length ? <ol>{queue.map((value, i) => <li key={i} data-cue={beat?.kind === 'enqueue' && i === queue.length - 1 ? '' : undefined}>{format(value)}</li>)}</ol> :
-        <span className="queue-empty">Empty</span>}
-      {beat?.kind === 'dequeue' && <small data-cue>Dequeued {format(beat.node)}</small>}
-    </div>
+    {scene.queue && <QueueScene queue={queue} beat={beat} />}
     {processed.length > 0 && <div className="watch-queue watch-processed" aria-label="Removal order">
       <span>Removal order</span><ol>{processed.slice(-20).map((value, i) => <li key={i}>{format(value)}</li>)}</ol>
     </div>}
   </div>;
 }
 
-function ValueScene({ scene, step, beat, moving, speed }: { scene: Scene; step: Step; beat?: Beat; moving: boolean; speed: number }) {
+function QueueScene({ queue, beat }: { queue: unknown[]; beat?: Beat }) {
+  return <div className="watch-queue" aria-label="Queue">
+      <span>Queue · front on left</span>
+      {queue.length ? <ol>{queue.map((value, i) => <li key={i} data-cue={beat?.kind === 'enqueue' && i === queue.length - 1 ? '' : undefined}>{format(value)}</li>)}</ol> :
+        <span className="queue-empty">Empty</span>}
+      {beat?.kind === 'dequeue' && <small data-cue>Dequeued {format(beat.node)}</small>}
+    </div>;
+}
+
+function ValueScene({ replay, scene, step, beat, moving, speed }: { replay: Replay; scene: Scene; step: Step; beat?: Beat; moving: boolean; speed: number }) {
   const host = useRef<HTMLDivElement>(null);
   useCue(host, beat, moving, speed);
   const value = scene.id ? step.H[scene.id] : undefined;
@@ -178,6 +183,19 @@ function ValueScene({ scene, step, beat, moving, speed }: { scene: Scene; step: 
   }
   const rows = matrixRows(value, step);
   if (rows) {
+    const shape = kind(value, step, scene.name, replay.roles, replay.topics);
+    if (shape === 'points' || shape === 'iv') {
+      const pairs = rows.map(row => row.values as number[]);
+      if (shape === 'iv') return <TopicPanel view={{ ranges: [{ name: scene.name, pairs }] }} />;
+      const plot = pointLayout(pairs);
+      const updated = new Set(beat?.grid?.written.map(address => Number(address.split(':')[0])));
+      return <svg className="watch-points" viewBox="0 0 300 200" role="img" aria-label={scene.name + ' coordinate plot'}>
+        <path d={'M8 ' + plot.axisY + 'H292 M' + plot.axisX + ' 8V192'} />
+        {plot.points.map(({ x, y, cx, cy }, i) => <circle key={i} cx={cx} cy={cy} r={5} data-active={updated.has(i)}>
+          <title>{'(' + x + ', ' + y + ')'}</title>
+        </circle>)}
+      </svg>;
+    }
     const reads = new Set(beat?.grid?.read), writes = new Set(beat?.grid?.written);
     return <div className="watch-matrix-wrap" ref={host}><table className="watch-matrix" aria-label={scene.name}>
       <thead><tr><th scope="col">Row</th>{rows[0].values.map((_, i) => <th scope="col" key={i}>{i}</th>)}</tr></thead><tbody>
@@ -188,16 +206,16 @@ function ValueScene({ scene, step, beat, moving, speed }: { scene: Scene; step: 
     </tbody></table></div>;
   }
   if (value.k === 'd' || value.k === 'o') {
-    return <div className="watch-table-wrap">
+    return <div className="watch-table-wrap" ref={host}>
       <table className="watch-table" aria-label={scene.name}>
         <thead><tr><th scope="col">{value.k === 'd' ? 'Key' : 'Field'}</th><th scope="col">Value</th></tr></thead>
-        <tbody>{(value.v as [unknown, unknown][]).map(([key, entry], i) => <tr key={i}><th scope="row">{rp(step.H, key)}</th><td>{rp(step.H, entry)}</td></tr>)}</tbody>
+        <tbody>{(value.v as [unknown, unknown][]).map(([key, entry], i) => <tr key={i} data-cue={beat?.entries?.includes(key) ? '' : undefined}><th scope="row">{rp(step.H, key)}</th><td>{rp(step.H, entry)}</td></tr>)}</tbody>
       </table>
     </div>;
   }
-  return <ol className="watch-values" aria-label={scene.name}>{value.v.map((entry, i) => <li key={i}>
+  return <div ref={host}><ol className="watch-values" aria-label={scene.name}>{value.v.map((entry, i) => <li key={i} data-cue={beat?.entries?.includes(entry) ? '' : undefined}>
     {value.k !== 's' && <span>{i}</span>}<code>{rp(step.H, entry)}</code>
-  </li>)}</ol>;
+  </li>)}</ol></div>;
 }
 
 function LinkedScene({ scene, step, beat, moving, speed, pointers, changes }: {
@@ -341,7 +359,8 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
   const model = replay?.watch.backtracking;
   const topic = replay?.watch.topic;
   const central = Boolean(model || topic);
-  const sceneTitle = scene?.kind === 'search' ? 'Binary search' : scene?.kind === 'graph' ? 'Graph traversal' :
+  const sceneTitle = scene?.shape === 'points' ? 'Coordinate plot' : scene?.shape === 'iv' ? 'Intervals' :
+    scene?.kind === 'search' ? 'Binary search' : scene?.kind === 'queue' ? 'Queue' : scene?.kind === 'graph' ? 'Graph traversal' :
     scene?.kind === 'backtracking' ? 'Backtracking' : scene?.kind === 'recursion' ? 'Recursion' : scene?.kind === 'grid' ? 'Grid' : scene?.kind === 'array' ? 'Array' :
     scene?.kind === 'linked' ? 'Node links' : 'Execution';
   const sampleTitle = replay && replay.source.key !== 'my-code' ? replay.source.title ?? replay.source.key : '';
@@ -458,12 +477,12 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
         <h2 tabIndex={-1}>{title}</h2>
         {description && <p>{description}</p>}
       </div>
-      {(!central || !desktop) && caption}
+      {!desktop && caption}
       {replay && <div className="watch-actions">
+        <button type="button" className="button primary compact" onClick={() => onInspect()}><ListTree />Inspect this moment</button>
         {replay.source.key !== 'my-code' && <a className="button neutral compact" href={replay.source.lesson ? '#interview' : '#library'}
           onClick={event => { event.preventDefault(); (replay.source.lesson ? onInterview : onExamples)(); }}>
           {replay.source.lesson ? 'Back to study plan' : 'Back to examples'}</a>}
-        <button type="button" className="button neutral compact" onClick={() => onInspect()}><ListTree />Inspect this moment</button>
         {canOpenOutput && (!central || !desktop) && <button type="button" className="button neutral compact" onClick={() => onInspect(true)}>Open printed output</button>}
         <details className="watch-view">
           <summary><Settings2 size={15} />View details</summary>
@@ -485,8 +504,10 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
       {full && desktop && !central && <div className="fullscreen-operation">{caption}</div>}
       <div className="scene-body">
         <div className="scene-stack">
+          {!full && desktop && !central && <div className="watch-stage-operation">{caption}</div>}
           {!replay || !scene || !sceneStep ? <p className="scene-empty">Run Python code to start playback.</p> :
             scene.kind === 'array' || scene.kind === 'search' ? <ArrayScene replay={replay} step={sceneStep} beat={beat} moving={motion} speed={speed} allSteps={allSteps} /> :
+            scene.kind === 'queue' ? <QueueScene queue={sceneStep.H[scene.id!]?.v ?? []} beat={beat} /> :
             scene.kind === 'graph' ? <GraphScene scene={scene} step={sceneStep} current={replay.watch.currentNodes.get(index)} processed={processed} beat={beat} moving={motion} speed={speed} zoom={zoom} /> :
             scene.kind === 'linked' ? <LinkedScene scene={scene} step={sceneStep} beat={beat} moving={motion} speed={speed} /> :
             model ? <div className="decision-lesson">
@@ -506,7 +527,7 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
               {!full && desktop && canOpenOutput && <button type="button" className="button neutral compact" onClick={() => onInspect(true)}>Open printed output</button>}
             </div> : scene.kind === 'recursion' ? showingTree ? <CallTree replay={replay} index={index} beat={beat} moving={motion} speed={speed} zoom={zoom} fit={fitTree} />
               : <p className="scene-empty">Call tree hidden. The current operation is shown alongside playback.</p> :
-            <ValueScene scene={scene} step={sceneStep} beat={beat} moving={motion} speed={speed} />}
+            <ValueScene replay={replay} scene={scene} step={sceneStep} beat={beat} moving={motion} speed={speed} />}
         </div>
       </div>
     </div>

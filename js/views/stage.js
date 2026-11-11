@@ -5,7 +5,7 @@ import { isHeap, kind, drawPoints, drawBits, drawNet, drawGrid, drawIv, heapTree
 const objs = new Map();
 
 export function drawStage(wrap, step, frame, index, previous, lastViewed, {
-  views, roles, topics, tree, speed, focus, relevance, scene, withSummary, omitNames = /** @type {string[]} */ ([]), omitReference = /** @type {string | number | undefined} */ (undefined),
+  views, roles, topics, tree, speed, focus, relevance, indexNames, scene, withSummary, showSupporting, omitNames = /** @type {string[]} */ ([]), omitReference = /** @type {string | number | undefined} */ (undefined),
 }) {
   const frames = step.F.length > 1 ? [step.F[0], frame] : [frame];
   const refs = new Map();
@@ -48,7 +48,10 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
   }).filter(object => object.id !== omitReference && !object.names.every(name => omitNames.includes(name)) && (object.visible || object.heapTreeEnabled))
     .sort((a, b) => b.priority - a.priority);
   const relevant = candidates.filter(candidate => candidate.priority > 0);
-  const objects = (relevant.length || withSummary || relevance.size ? relevant : candidates.slice(0, 1)).slice(0, 8);
+  const ranked = relevant.length || withSummary || relevance.size ? relevant : candidates.slice(0, 1);
+  const primaryCount = ranked.filter(candidate => candidate.priority >= 2).length;
+  const featuredCount = primaryCount || (withSummary ? 0 : 1);
+  const objects = ranked.slice(0, showSupporting ? 8 : featuredCount);
 
   const asInteger = value => Number.isSafeInteger(value) ? BigInt(value) :
     /^-?\d+$/.test(value?.p ?? '') ? BigInt(value.p) : undefined;
@@ -85,10 +88,10 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
     else if (type === 'list') {
       const searchPointers = scene.kind === 'search' ? (String(id) === scene.id
         ? Object.entries(frame.v).filter(([name, value]) => scene.bounds.includes(name) && Number.isInteger(value) && value >= 0)
-        : []) : pointers;
+        : []) : pointers.filter(([name]) => indexNames.get(String(id))?.has(name));
       drawList(element, label, heap, searchPointers, id, step);
       element._row.hidden = !views.list;
-      if (heapTreeEnabled) heapTree(element, heap.v, names.some(name => /seg/.test(name)) ? 1 : 0, pointers, step.H);
+      if (heapTreeEnabled) heapTree(element, heap.v, names.some(name => /seg/.test(name)) ? 1 : 0, searchPointers, step.H);
       else element._tr?.remove();
     } else drawCard(element, label, step, heap, lastViewed, id);
   }
@@ -113,6 +116,7 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
   else if (callCard()) callCard().style.display = 'none';
   const stageIsEmpty = !ids.size && (!graphCard() || graphCard().style.display === 'none') && (!callCard() || callCard().style.display === 'none');
   wrap.classList.toggle('void', stageIsEmpty);
+  return Math.max(0, Math.min(ranked.length, 8) - featuredCount);
 }
 
 export function resetStage(wrap) {

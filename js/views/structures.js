@@ -105,20 +105,25 @@ function kind(item, step, name, roles, topics) {
   return item.v.every(value => plain(value) || value?.p !== undefined) ? 'list' : 'card';
 }
 
-function drawPoints(element, name, item, step) {
-  const points = item.v.map(value => step.H[value.r].v);
+/** @param {number[][]} points */
+function pointLayout(points) {
   const x = points.map(point => point[0]), y = points.map(point => point[1]);
   const left = Math.min(0, ...x), right = Math.max(0, ...x);
   const bottom = Math.min(0, ...y), top = Math.max(0, ...y);
   const scale = Math.min(256 / (right - left || 1), 156 / (top - bottom || 1));
   const sx = value => 150 + (value - (left + right) / 2) * scale;
   const sy = value => 100 - (value - (top + bottom) / 2) * scale;
+  return { axisX: sx(0), axisY: sy(0), points: points.map(([x, y]) => ({ x, y, cx: sx(x), cy: sy(y) })) };
+}
+
+function drawPoints(element, name, item, step) {
+  const { axisX, axisY, points } = pointLayout(item.v.map(value => step.H[value.r].v));
   element._row = element._sig = null;
   element.innerHTML = '<div class="hd">' + eh(name) + ', ' + points.length + ' points</div>' +
     '<svg class="points" viewBox="0 0 300 200" aria-label="Coordinate plot">' +
-    '<path class="eg" d="M8 ' + sy(0) + 'H292 M' + sx(0) + ' 8V192"/>' +
-    points.map(([a, b]) => '<circle cx="' + sx(a) + '" cy="' + sy(b) + '" r="5"><title>(' +
-      a + ', ' + b + ')</title></circle>').join('') + '</svg>';
+    '<path class="eg" d="M8 ' + axisY + 'H292 M' + axisX + ' 8V192"/>' +
+    points.map(({ x, y, cx, cy }) => '<circle cx="' + cx + '" cy="' + cy + '" r="5"><title>(' +
+      x + ', ' + y + ')</title></circle>').join('') + '</svg>';
 }
 
 function drawBits(element, name, value, previous) {
@@ -198,4 +203,4 @@ function drawCT(wrap,CT,d){
 
 const callCard = () => CTE;
 const resetCalls = () => { CTE = null; };
-export { isHeap, netOf, kind, drawPoints, drawBits, drawNet, drawGrid, drawIv, heapTree, buildCallForest, buildTree, drawCT, callCard, resetCalls };
+export { isHeap, netOf, kind, pointLayout, drawPoints, drawBits, drawNet, drawGrid, drawIv, heapTree, buildCallForest, buildTree, drawCT, callCard, resetCalls };

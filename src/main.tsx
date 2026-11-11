@@ -30,7 +30,7 @@ const myCode = 'my-code';
 const firstSample = exampleNames[0];
 const media = window.matchMedia('(max-width: 760px)');
 const horizontalDefault: Layout = { editor: 36, results: 64 };
-const verticalDefault: Layout = { visualization: 69, inspector: 31 };
+const verticalDefault: Layout = { visualization: 74, inspector: 26 };
 const stageKeys = ['calls', ...rendererOptions.map(([key]) => key)] as const;
 const layoutKey = 'dryrun.panels.v1.';
 type WorkspaceTab = 'code' | 'visualize' | 'inspect';
@@ -127,7 +127,7 @@ function App() {
   const watchStepsPreference = useRef(prefs.watchSteps);
   watchStepsPreference.current = prefs.watchSteps;
   const showStepNote = inspectFullscreen ? prefs.fullscreenSteps !== false : prefs.views.narration;
-  const inspectTree = prefs.views.calls && (prefs.explicitTree === true || Boolean(replay?.watch.calls.length));
+  const inspectTree = prefs.views.calls && (prefs.explicitTree === true || Boolean(replay?.watch.calls.length && !replay.watch.backtracking));
   const inspectViews = useMemo(() => ({ ...prefs.views, calls: inspectTree }), [inspectTree, prefs.views]);
   const draftHasChanges = replay?.source.key === myCode && draft !== replay.source.code;
   const lines = useMemo(() => replay?.source.code.split('\n') ?? [], [replay]);
@@ -159,13 +159,27 @@ function App() {
   useEffect(() => {
     if (focusedMode.current === mode) return;
     focusedMode.current = mode;
-    if (mode === 'interview') return;
+    if (mode === 'interview' || inspectFullscreen) return;
     const target = mode === 'library' ? '#library-title' : mode === 'watch' ? '.watch-heading h2'
       : mode === 'inspect' && mobile && workspaceTab !== 'code' ? '.workspace-tabs [aria-current="page"]' : '.editor-pane h2';
     const frame = requestAnimationFrame(() => document.querySelector<HTMLElement>(target)?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
-  }, [mode, mobile, workspaceTab]);
+  }, [mode, mobile, workspaceTab, inspectFullscreen]);
   useEffect(() => { if (writing && !Engine.ready) Engine.init(); }, [writing]);
+
+  const enterInspectFullscreen = useCallback((native = true) => {
+    const element = workspace.current;
+    if (!element) return;
+    inspectFullRequest.current = true;
+    setInspectFullscreen(true);
+    requestAnimationFrame(() => inspectExpand.current?.focus({ preventScroll: true }));
+    if (!native) return;
+    void element.requestFullscreen?.().then(() => {
+      if (document.fullscreenElement !== element) return;
+      if (inspectFullRequest.current) inspectNative.current = true;
+      else void document.exitFullscreen().catch(() => {});
+    }).catch(() => {});
+  }, []);
 
   const run = useCallback(async (document: DocumentSource, destination: RunDestination | null = 'watch', intro = false) => {
     const id = ++request.current;
@@ -190,13 +204,14 @@ function App() {
       if (destination && same && origin === modeRef.current) {
         setWorkspaceTab('code');
         navigate(showWatch ? 'watch' : 'inspect', document);
+        if (destination === 'inspect-fullscreen') enterInspectFullscreen(false);
       }
     } catch (error) {
       if (id !== request.current) return;
       lastRequest.current = undefined;
       dispatch({ type: 'error', error: error instanceof Error ? error.message : String(error) });
     }
-  }, [navigate]);
+  }, [enterInspectFullscreen, navigate]);
 
   useEffect(() => {
     const restore = () => {
@@ -264,7 +279,7 @@ function App() {
   }, []);
   useEffect(() => {
     if (!inspectFullscreen) return;
-    if (!inspecting || mobile) { exitInspectFullscreen(); return; }
+    if (!inspecting) { exitInspectFullscreen(); return; }
     const handleChange = () => {
       if (document.fullscreenElement === workspace.current) inspectNative.current = true;
       else if (inspectNative.current) exitInspectFullscreen();
@@ -293,19 +308,7 @@ function App() {
       document.removeEventListener('fullscreenchange', handleChange);
       document.removeEventListener('keydown', handleKey);
     };
-  }, [exitInspectFullscreen, inspectFullscreen, inspecting, mobile, pending]);
-  function enterInspectFullscreen() {
-    const element = workspace.current;
-    if (!element) return;
-    inspectFullRequest.current = true;
-    setInspectFullscreen(true);
-    requestAnimationFrame(() => inspectExpand.current?.focus({ preventScroll: true }));
-    void element.requestFullscreen?.().then(() => {
-      if (document.fullscreenElement !== element) return;
-      if (inspectFullRequest.current) inspectNative.current = true;
-      else void document.exitFullscreen().catch(() => {});
-    }).catch(() => {});
-  }
+  }, [exitInspectFullscreen, inspectFullscreen, inspecting, pending]);
   useEffect(() => {
     if (replacement !== null) replaceDialog.current?.showModal();
     else replaceDialog.current?.close();
@@ -360,11 +363,14 @@ function App() {
     setEditorRevision(value => value + 1);
     openMyCode();
   }
-  function runCurrent(destination: RunDestination = 'watch') {
+  function runCurrent(destination: RunDestination = 'inspect') {
     if (!source.trim() || pending) return;
     if (writing && sameSource && !playback.error) {
-      if (destination === 'inspect') inspectMoment();
-      else navigate('watch');
+      if (destination === 'watch') navigate('watch');
+      else {
+        inspectMoment();
+        if (destination === 'inspect-fullscreen') enterInspectFullscreen();
+      }
       return;
     }
     void run(lesson ?? { key: docKey, code: source }, destination);
@@ -372,7 +378,7 @@ function App() {
   function runUpdatedDraft() {
     if (!draft.trim() || pending) return;
     openMyCode();
-    void run({ key: myCode, code: draft });
+    void run({ key: myCode, code: draft }, 'inspect');
   }
   function inspectMoment(output = false, fromWatch = false) {
     setWorkspaceTab(output ? 'inspect' : fromWatch && mobile ? 'visualize' : 'code');
@@ -419,8 +425,9 @@ function App() {
       <nav className="product-nav" aria-label="Dryrun pages">
         <button type="button" aria-current={mode === 'library' || mode === 'interview' ? 'page' : undefined} onClick={() => navigate('library')}><BookOpen /><span>Examples</span></button>
         <button type="button" aria-current={writing ? 'page' : undefined} onClick={openMyCode}><CodeXml /><span>Write</span></button>
-        {replay && !replay.steps[0]?.syntax && <button type="button" aria-current={watching ? 'page' : undefined} onClick={() => navigate('watch', replay.source)}><Activity /><span>Watch</span></button>}
-        {replay && <button type="button" aria-current={inspecting ? 'page' : undefined} onClick={() => { if (!inspecting) inspectMoment(); }}><ListTree /><span>Inspect</span></button>}
+        <button type="button" disabled={!replay} aria-current={inspecting ? 'page' : undefined} onClick={() => { if (!inspecting) inspectMoment(); }}><ListTree /><span>Inspect</span></button>
+        <button type="button" disabled={!replay} onClick={() => { if (!inspecting) inspectMoment(); enterInspectFullscreen(); }}><Maximize /><span>Inspect fullscreen</span></button>
+        <button type="button" disabled={!replay || Boolean(replay.steps[0]?.syntax)} aria-current={watching ? 'page' : undefined} onClick={() => navigate('watch', replay?.source)}><Activity /><span>Watch</span></button>
       </nav>
       <div className="top-actions">
         <button type="button" className="icon-button theme-toggle" aria-label="Dark mode" aria-pressed={Boolean(prefs.dark)}
@@ -462,7 +469,7 @@ function App() {
     </nav>
 
     <main ref={workspace} className={'workspace' + (writing ? ' write-workspace' : '') + (inspectFullscreen ? ' inspect-fullscreen' : '')}
-      hidden={!inspecting && !writing} data-tab={workspaceTab}
+      hidden={!inspecting && !writing} data-tab={inspectFullscreen && mobile ? 'visualize' : workspaceTab}
       role={inspectFullscreen ? 'dialog' : undefined} aria-modal={inspectFullscreen || undefined}
       aria-label={inspectFullscreen ? 'Inspect fullscreen' : undefined}
       aria-description={inspectFullscreen ? 'Use the playback controls below the workspace. Press Escape to leave.' : undefined}>
@@ -495,7 +502,7 @@ function App() {
         <Panel id="results" className="results-panel" minSize="330px">
           {writing && <WriteGuide source={source} pending={pending} pendingMessage={runMessage}
             error={playback.error || (sameSource ? replay?.steps.at(-1)?.error ?? '' : '')}
-            ready={Boolean(sameSource && replay)} onRun={runCurrent} onExample={() => loadDraft(SAMPLES[firstSample])} />}
+            ready={Boolean(sameSource && replay)} onRun={runCurrent} />}
           <div className="inspect-results" hidden={!inspecting}>
           <Group className="results-group" id="results-split" orientation="vertical" groupRef={stacked} disabled={mobile || !inspecting || inspectFullscreen} defaultLayout={vertical}
             onLayoutChanged={(layout, meta) => {
@@ -517,10 +524,10 @@ function App() {
                     {!prefs.inspector && !mobile && !inspectFullscreen && <button type="button" className="icon-button" title="Show inspector" aria-label="Show inspector" onClick={() => setPrefs(old => ({ ...old, inspector: true }))}><PanelBottomOpen /></button>}
                     {inspectFullscreen && <button type="button" className="button neutral compact fullscreen-step-toggle" aria-pressed={showStepNote}
                       onClick={() => setPrefs(old => ({ ...old, fullscreenSteps: old.fullscreenSteps === false }))}>Step explanation</button>}
-                    {!mobile && <button ref={inspectExpand} type="button" className="icon-button inspect-expand"
+                    {(!mobile || inspectFullscreen) && <button ref={inspectExpand} type="button" className="icon-button inspect-expand"
                       aria-label={inspectFullscreen ? 'Exit Inspect fullscreen' : 'Fullscreen Inspect'}
                       title={inspectFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen Inspect'}
-                      onClick={inspectFullscreen ? exitInspectFullscreen : enterInspectFullscreen}>
+                      onClick={inspectFullscreen ? exitInspectFullscreen : () => enterInspectFullscreen()}>
                       {inspectFullscreen ? <Minimize /> : <Maximize />}
                     </button>}
                   </div>

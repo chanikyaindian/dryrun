@@ -341,3 +341,28 @@
 .linked-guide text { fill: var(--watch-accent); font: 11px var(--sans); }
 .watch-node[data-processed="true"][data-active="false"][data-queued="false"] circle { fill: #dbe5fc; }
 .watch-processed { margin-top: 6px; }
+
+.watch-queue li[data-cue], .watch-table tr[data-cue] > *, .watch-values li[data-cue] { background: var(--hl); box-shadow: inset 0 -2px 0 var(--watch-accent); }
+
+.watch-points { width: min(420px, 100%); max-height: 280px; }
+.watch-points path { fill: none; stroke: var(--watch-edge); }
+.watch-points circle { fill: var(--watch-accent); }
+.watch-points circle[data-active="true"] { fill: var(--hl); stroke: var(--watch-accent); stroke-width: 2; }
+
+.watch-canvas[data-scene="queue"] .watch-queue { flex-direction: column; align-items: flex-start; gap: 12px; font-size: 14px; }
+.watch-canvas[data-scene="queue"] .watch-queue li { min-width: 46px; padding: 10px 13px; text-align: center; font-size: 17px; }
+.watch-canvas[data-scene="queue"] .watch-queue ol { flex-wrap: wrap; }
+
+@media (min-width: 761px) {
+  .watch-player:not(.watch-fullscreen) { grid-template: auto minmax(0, 1fr) auto / minmax(0, 1fr); padding-block-start: clamp(12px, 2.5vh, 28px); }
+  .watch-rail { grid-row: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px 18px; padding: 0 0 14px; }
+  .watch-heading h2 { font-size: clamp(24px, 3vw, 38px); line-height: 1.1; letter-spacing: -.045em; }
+  .watch-heading p { display: none; }
+  .watch-rail .watch-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; margin: 0; gap: 7px; }
+  .watch-rail .write-python { grid-column: 3; grid-row: 1; margin: 0; }
+  .watch-rail > :is(.watch-variables, .watch-stack, .prediction) { grid-column: 1 / -1; margin-block: 0; }
+  .watch-rail .predict-trigger { justify-self: start; }
+  .watch-stage-operation { max-width: 52rem; width: 100%; margin: 0 auto 14px; }
+  .watch-stage-operation .watch-operation { margin: 0; border: 0; padding: 0; }
+  .watch-stage-operation .watch-caption { font-size: clamp(17px, 1.7vw, 23px); }
+}
