@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+const runActions = (page: Page) => page.getByRole('complementary', { name: 'Run your Python' });
 
 test('the example catalog filters by topic and browser Back restores the search', async ({ page }) => {
   await page.context().route('https://cdn.jsdelivr.net/**', route => route.abort());
@@ -8,8 +10,15 @@ test('the example catalog filters by topic and browser Back restores the search'
   await page.getByRole('searchbox', { name: 'Filter examples' }).fill('queue');
   await expect(page.locator('.catalog-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'BFS with queue', exact: true }).click();
-  await expect(page).toHaveURL(/#watch$/);
+  await expect(page).toHaveURL(/#write\?example=BFS%20with%20queue$/);
+  await expect(page.getByRole('heading', { name: 'BFS with queue', exact: true })).toBeVisible();
+  await expect(page.getByRole('slider', { name: 'Watch event' })).toBeHidden();
+  await expect(page.getByLabel('Python code', { exact: true })).toContainText('deque');
+  await runActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
+  await expect(page).toHaveURL(/#watch\?example=BFS%20with%20queue$/);
   await expect(page.getByRole('img', { name: 'Graph and active traversal' })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'BFS with queue', exact: true })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('searchbox', { name: 'Filter examples' })).toHaveValue('queue');
   await expect(page.getByRole('button', { name: 'Graphs and trees', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -20,6 +29,7 @@ test('the example catalog filters by topic and browser Back restores the search'
   await expect(page.locator('.catalog-card')).toHaveCount(18);
   await page.getByRole('searchbox', { name: 'Filter examples' }).fill('permutation');
   await page.getByRole('button', { name: 'Permutations', exact: true }).click();
+  await runActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Permutations', exact: true })).toBeVisible();
   await expect(page.locator('[data-scene="backtracking"]')).toBeVisible();
 });
@@ -56,17 +66,26 @@ test('the Write page orders its three run actions and protects the draft when ed
   await editor.fill('print("draft")');
   await expect(actions.getByRole('button', { name: 'Inspect', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Examples', exact: true }).click();
-  await page.getByRole('button', { name: 'Bubble sort', exact: true }).click();
-  await page.locator('header').getByRole('button', { name: 'Inspect', exact: true }).click();
+  await page.getByRole('button', { name: 'Open Bubble sort in Write' }).click();
+  await expect(page).toHaveURL(/#write\?example=Bubble%20sort$/);
+  await expect(editor).toContainText('arr = [5, 2, 9, 1, 6]');
+  await runActions(page).getByRole('button', { name: 'Inspect', exact: true }).click();
   const edit = page.getByRole('button', { name: 'Edit a copy' });
   await edit.click();
   await expect(page.getByRole('dialog', { name: 'Replace your draft?' })).toBeVisible();
   await page.getByRole('button', { name: 'Keep draft' }).click();
-  await expect(page).toHaveURL(/#inspect$/);
+  await expect(page).toHaveURL(/#inspect\?example=Bubble%20sort$/);
   await edit.click();
   await page.getByRole('button', { name: 'Replace draft' }).click();
   await expect(editor).toContainText('arr = [5, 2, 9, 1, 6]');
   await page.reload();
+  await expect(editor).toContainText('arr = [5, 2, 9, 1, 6]');
+  await page.getByRole('button', { name: 'Examples', exact: true }).click();
+  await page.getByRole('button', { name: 'Open Bubble sort in Write' }).click();
+  await editor.fill('print("edited example")');
+  await page.reload();
+  await expect(editor).toHaveText('print("edited example")');
+  await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Write', exact: true }).click();
   await expect(editor).toContainText('arr = [5, 2, 9, 1, 6]');
 });
 
@@ -75,6 +94,7 @@ test('compact Watch opens the matching window in Inspect and keeps the return pa
   await page.context().route('https://cdn.jsdelivr.net/**', route => route.abort());
   await page.goto('/');
   await page.getByRole('button', { name: 'Sliding window', exact: true }).click();
+  await runActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
   await page.getByRole('button', { name: 'Next event' }).click();
   const canvas = page.locator('.watch-canvas');
   await expect(canvas.locator('[data-in-window] code')).toHaveText('2');

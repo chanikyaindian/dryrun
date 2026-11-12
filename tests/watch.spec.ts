@@ -7,7 +7,10 @@ const next = (page: Page) => player(page).getByRole('button', { name: 'Next even
 const inspect = (page: Page) => page.locator('header').getByRole('button', { name: 'Inspect', exact: true });
 async function openExample(page: Page, name: string) {
   await page.locator('header').getByRole('button', { name: name === 'My code' ? 'Write' : 'Examples', exact: true }).click();
-  if (name !== 'My code') await page.getByRole('button', { name, exact: true }).click();
+  if (name !== 'My code') {
+    await page.getByRole('button', { name, exact: true }).click();
+    await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Watch', exact: true }).click();
+  }
 }
 async function custom(page: Page, source: string) {
   await openExample(page, 'My code');

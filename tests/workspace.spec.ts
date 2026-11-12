@@ -9,8 +9,9 @@ async function inspect(page: Page) {
 }
 async function example(page: Page, name: string) {
   await page.locator('header').getByRole('button', { name: name === 'My code' ? 'Write' : 'Examples', exact: true }).click();
-  if (name !== 'My code') await page.getByRole('button', { name, exact: true }).click();
   if (name !== 'My code') {
+    await page.getByRole('button', { name, exact: true }).click();
+    await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
     await expect(page.getByRole('slider', { name: 'Watch event' })).toBeVisible();
     await inspect(page);
   }
@@ -58,6 +59,7 @@ test('desktop Watch variables, hidden visualization restore, theme, and Inspect 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await page.getByRole('button', { name: 'BFS with queue', exact: true }).click();
+  await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
   const watch = page.locator('.watch-player');
   await watch.getByRole('slider', { name: 'Watch event' }).press('End');
   await watch.getByText('View details', { exact: true }).click();
@@ -165,10 +167,11 @@ test('the main navbar toggle works across Examples, Watch, Inspect and Write', a
   await expect(show).toBeFocused();
 
   await page.getByRole('button', { name: 'Bubble sort', exact: true }).click();
-  await expect(page).toHaveURL(/#watch$/);
+  await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
+  await expect(page).toHaveURL(/#watch\?example=Bubble%20sort$/);
   await expect(header).toBeHidden();
   await page.getByRole('button', { name: 'Inspect this moment' }).click();
-  await expect(page).toHaveURL(/#inspect$/);
+  await expect(page).toHaveURL(/#inspect\?example=Bubble%20sort$/);
   await expect(header).toBeHidden();
   await page.getByRole('button', { name: 'Edit a copy' }).click();
   await expect(page).toHaveURL(/#write$/);
@@ -184,6 +187,7 @@ test('the main navbar toggle works across Examples, Watch, Inspect and Write', a
   await header.getByRole('button', { name: 'Examples', exact: true }).click();
   await hide.click();
   await page.getByRole('button', { name: 'Recursion (Fibonacci)', exact: true }).click();
+  await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Fullscreen', exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
@@ -336,6 +340,8 @@ test('bundled lessons expose their key decision and finish with the offline engi
   for (const sample of samples) {
     await page.locator('header').getByRole('button', { name: 'Examples', exact: true }).click();
     await page.getByRole('button', { name: sample, exact: true }).click();
+    await expect(page.getByRole('heading', { name: sample, exact: true })).toBeVisible();
+    await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
     await expect(page.getByRole('slider', { name: 'Watch event' })).toBeVisible();
     if (landmarks[sample]) {
       const [label, caption] = landmarks[sample];

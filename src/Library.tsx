@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUpRight, Binary, Braces, CodeXml, GitFork, Layers3, ListTree, Play, Search } from 'lucide-react';
+import { ArrowDown, ArrowUpRight, Binary, Braces, CodeXml, GitFork, Layers3, ListTree, Search } from 'lucide-react';
 import { SAMPLES } from '../js/samples.js';
 
 export type ExampleName = keyof typeof SAMPLES;
@@ -50,8 +50,8 @@ export function Library({ active, onExample, onWrite, onInterview }: { active: b
           }}>Browse examples<ArrowDown /></a>
         </div>
       </div>
-      <button className="library-feature" type="button" aria-label="Watch Bubble sort" onClick={() => onExample('Bubble sort')}>
-        <span className="feature-heading"><span>Bubble sort</span><span className="feature-open"><Play size={17} /></span></span>
+      <button className="library-feature" type="button" aria-label="Open Bubble sort in Write" onClick={() => onExample('Bubble sort')}>
+        <span className="feature-heading"><span>Bubble sort</span><span className="feature-open"><ArrowUpRight size={17} /></span></span>
         <span className="feature-plot" aria-hidden="true">
           {[5, 2, 9, 1, 6].map((value, index) => <span className="feature-bar" key={value} data-compare={index < 2} style={{ height: (value + 2) * 9 + '%' }}>{value}</span>)}
         </span>
@@ -59,7 +59,7 @@ export function Library({ active, onExample, onWrite, onInterview }: { active: b
       </button>
     </section>
     <section className="library-examples" id="library-examples" tabIndex={-1} aria-labelledby="examples-title">
-      <div className="catalog-heading"><div><h3 id="examples-title">Example library</h3><p>Pick a topic and start a replay.</p></div>
+      <div className="catalog-heading"><div><h3 id="examples-title">Example library</h3><p>Pick an example to open its code in Write.</p></div>
         <label className="catalog-search"><Search size={17} /><span className="sr-only">Filter examples</span>
           <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find an algorithm" /></label>
       </div>
