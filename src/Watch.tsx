@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { ChevronLeft, ChevronRight, CodeXml, ListTree, Maximize, Minimize, Minus, Pause, Play, Plus, RotateCcw, Settings2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CodeXml, ListTree, Maximize, Minimize, Minus, Pause, Play, Plus, RotateCcw, Settings2, Variable } from 'lucide-react';
 import { rp } from '../js/views/basic.js';
 import { kind, netOf, pointLayout } from '../js/views/structures.js';
 import { beatPosition, isAtom, linkedNodes, matrixRows, readIndices, scopeValue, searchState, watchLandmarks, type Beat, type Network, type Scene } from './watchModel';
@@ -12,7 +12,7 @@ import type { TopicEvent } from './topicModel';
 import { narrateStep } from './stepNarration';
 import { exampleDescription } from './Library';
 import { CallTree } from './CallTree';
-import { frameVariables } from './Inspector';
+import { VariableSnapshot } from './VariableSnapshot';
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const duration = (speed: number) => Math.min(320, Math.max(110, speed * .62));
@@ -321,29 +321,12 @@ type Props = {
   onInspect: (output?: boolean) => void;
   showTree: boolean; showStack: boolean; desktop: boolean;
   showVariables: boolean;
+  showFullscreenVariables: boolean; onFullscreenVariables: () => void;
   onTree: () => void; onStack: () => void; onVariables: () => void;
 };
 
-function WatchVariables({ step, previous }: { step?: Step; previous?: Step }) {
-  const [scope, setScope] = useState<number | null>(null);
-  const values = frameVariables(step, previous, scope);
-  return <section className="watch-variables" aria-label="Watch variables">
-    <h3>Variables</h3>
-    {step && step.F.length > 1 && <label className="scope-control">Scope
-      <select value={scope !== null && scope < step.F.length ? scope : 'current'}
-        onChange={event => setScope(event.target.value === 'current' ? null : Number(event.target.value))}>
-        <option value="current">Current frame</option>
-        {step.F.map((frame, i) => <option key={i} value={i}>{frame.n === '<module>' ? 'Main program' : frame.n + ' · frame ' + (i + 1)}</option>)}
-      </select>
-    </label>}
-    {values.length ? <dl>{values.map(({ name, shown, changed }) => <div key={name}>
-      <dt>{changed && <i className="change-dot" aria-label="Changed" />}{name}</dt><dd title={shown}><code>{shown}</code></dd>
-    </div>)}</dl> : <p>No variables in this frame yet.</p>}
-  </section>;
-}
-
 export function Watch({ active, replay, index, playing, motion, speed, onMove, onSeek, onPlay, onFullscreen, onSpeed, onWrite, onInterview, onExamples,
-  onPause, onInspect, allSteps, onDetail, showTree, showStack, showVariables, desktop, onTree, onStack, onVariables }: Props) {
+  onPause, onInspect, allSteps, onDetail, showTree, showStack, showVariables, showFullscreenVariables, onFullscreenVariables, desktop, onTree, onStack, onVariables }: Props) {
   const surface = useRef<HTMLElement>(null);
   const expand = useRef<HTMLButtonElement>(null);
   const native = useRef(false);
@@ -444,7 +427,8 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
       showControls();
       if (event.key === 'Escape') { event.preventDefault(); leave(); }
       if (event.key === 'Tab') {
-        const controls = [...(surface.current?.querySelectorAll<HTMLElement>('.watch-dock :is(button, input, select):not(:disabled)') ?? [])];
+        const controls = [...(surface.current?.querySelectorAll<HTMLElement>(
+          '.fullscreen-variables, .fullscreen-variables select, .watch-dock :is(button, input, select):not(:disabled)') ?? [])];
         const first = controls[0], last = controls.at(-1);
         const target = document.activeElement;
         if (!first || !last) return;
@@ -470,7 +454,8 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
 
   return <main className={'watch-player' + (full ? ' watch-fullscreen' : '')} ref={surface} hidden={!active}
     tabIndex={full ? -1 : undefined} role={full ? 'dialog' : undefined} aria-modal={full || undefined} aria-label="Algorithm player"
-    data-controls={revealed} data-playing={playing} data-all-steps={allSteps} onPointerMove={full ? showControls : undefined} onPointerDown={full ? showControls : undefined}>
+    data-controls={revealed} data-playing={playing} data-all-steps={allSteps} data-variables-open={full && showFullscreenVariables || undefined}
+    onPointerMove={full ? showControls : undefined} onPointerDown={full ? showControls : undefined}>
     {!full && <aside className="watch-rail" aria-label="Current operation">
       <div className={'watch-heading' + (replay?.source.lesson ? ' interview-watch-heading' : '')}>
         {model && sampleTitle && <span className="watch-topic">Backtracking</span>}
@@ -492,7 +477,7 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
           <small>{hasTree ? 'Call tree and stack settings also apply in Inspect.' : 'Call stack settings also apply in Inspect.'}</small>
         </details>
       </div>}
-      {showVariables && <WatchVariables key={'variables:' + replay?.id} step={step} previous={replay?.steps[index - 1]} />}
+      {showVariables && <VariableSnapshot key={'variables:' + replay?.id} label="Watch variables" step={step} previous={replay?.steps[index - 1]} />}
       {desktop && showStack && step && <ol className="watch-stack" aria-label="Call stack">
         {step.F.slice().reverse().map((frame, i) => <li key={i}><code>{frame.n === '<module>' ? 'Main program' : frame.n + '()'}</code>{i === 0 && <span>Active</span>}</li>)}
       </ol>}
@@ -531,6 +516,8 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
         </div>
       </div>
     </div>
+    {full && showFullscreenVariables && <VariableSnapshot key={'fullscreen-variables:' + replay?.id} id="watch-fullscreen-variables" label="Watch fullscreen variables"
+      fullscreen step={step} previous={replay?.steps[index - 1]} />}
     <div className="watch-dock" aria-label="Watch playback">
       <button type="button" className="watch-icon watch-step" title={allSteps ? 'Previous step' : 'Previous event'} aria-label={allSteps ? 'Previous step' : 'Previous event'} disabled={!count || index <= first} onClick={() => onMove(-1)}><ChevronLeft /></button>
       <button type="button" className="watch-play" aria-label={playing ? 'Pause' : done && canPlay ? 'Replay' : 'Play'} disabled={!canPlay} onClick={onPlay}>
@@ -563,6 +550,9 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
           setZoom(value => Math.min(2, value + .25));
         }}><Plus /></button>
       </div>}
+      {full && <button type="button" className="watch-icon fullscreen-variable-toggle" aria-label="Show variables" title="Show variables"
+        aria-pressed={showFullscreenVariables} aria-controls={showFullscreenVariables ? 'watch-fullscreen-variables' : undefined}
+        onClick={onFullscreenVariables}><Variable />{desktop && <span>Variables</span>}</button>}
       {full ? <button type="button" className="watch-icon watch-exit" aria-label="Exit fullscreen" title="Exit fullscreen (Esc)" onClick={leave}><Minimize />{desktop && <span>Exit</span>}</button> :
         <button ref={expand} type="button" className="watch-icon" aria-label="Fullscreen" title="Fullscreen" disabled={!step} onClick={enter}><Maximize /></button>}
     </div>

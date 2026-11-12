@@ -117,6 +117,7 @@ export type Preferences = {
   views: Record<ViewKey, boolean>; follow: boolean; live: boolean; inspector: boolean; speed: number;
   explicitTree?: boolean; explicitStack?: boolean; watchVariables?: boolean; dark?: boolean; navbarHidden?: boolean;
   watchSteps?: boolean; fullscreenSteps?: boolean;
+  inspectFullscreenVariables?: boolean; watchFullscreenVariables?: boolean;
 };
 export type Preset = 'Learn' | 'Debug' | 'Focus';
 const keys = [...primaryOptions, ...rendererOptions].map(([key]) => key);
@@ -150,6 +151,8 @@ export function loadPreferences(): Preferences {
     navbarHidden: saved.navbarHidden === true,
     watchSteps: typeof saved.watchSteps === 'boolean' ? saved.watchSteps : undefined,
     fullscreenSteps: saved.fullscreenSteps !== false,
+    inspectFullscreenVariables: saved.inspectFullscreenVariables === true,
+    watchFullscreenVariables: saved.watchFullscreenVariables === true,
     live: saved.live === true, follow: saved.follow !== false, inspector: saved.inspector !== false,
     speed: [1000, 560, 240].includes(saved.speed ?? 0) ? saved.speed! : defaults.speed,
   };

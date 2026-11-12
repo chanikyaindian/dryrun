@@ -168,6 +168,20 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; width: 15px; he
 .inspect-fullscreen :is(.horizontal-splitter, .inspector-panel, .editor-footer, .editor-pane > .pane-header > button, .pattern-strip, .legend, .replay-version) { display: none !important; }
 .inspect-fullscreen .step-note { padding: 10px 14px; font-size: 13px; }
 .fullscreen-step-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.fullscreen-variable-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.variable-snapshot { min-width: 0; min-height: 0; overflow: auto; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.variable-snapshot h3 { font-size: 13px; margin: 0 0 6px; }
+.variable-snapshot :is(dl, p, dt, dd) { margin: 0; }
+.variable-snapshot dl > div { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 7px; border-top: 1px solid var(--line); padding: 6px 0; }
+.variable-snapshot :is(dt, dd) { overflow-wrap: anywhere; }
+.variable-snapshot dt { font-weight: 650; }
+.variable-snapshot .change-dot { display: inline-block; margin-right: 4px; }
+.variable-snapshot p { color: var(--mu); font-size: 12px; }
+.fullscreen-variables { overscroll-behavior: contain; }
+.fullscreen-variables:focus-visible { outline-offset: -3px; }
+.inspect-fullscreen .fullscreen-variables { flex: 0 1 auto; max-height: min(25dvh, 190px); margin: 6px 8px; }
+.inspect-fullscreen .visualization-header { flex-wrap: wrap; }
+.inspect-fullscreen .stage-actions { flex-wrap: wrap; gap: 5px; }
 .inspect-fullscreen .single-card > .obj:has(> .row:not([hidden])):not(:has(> .ht)) { display: flex; flex-direction: column; }
 .inspect-fullscreen .single-card > .obj:has(> .row:not([hidden])):not(:has(> .ht)) > .row { flex: 0 0 auto; margin: auto; }
 .legend { border-top: 1px solid var(--line); display: flex; align-items: center; gap: 13px; padding: 6px 12px; font-size: 10px; color: var(--mu); }

@@ -1,12 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Group, Panel, Separator, type GroupImperativeHandle, type Layout, type PanelImperativeHandle } from 'react-resizable-panels';
-import { Activity, BookOpen, ChevronDown, CircleAlert, CodeXml, FlaskConical, Focus, LayoutPanelTop, ListTree, Maximize, Minimize, Moon, PanelBottomOpen, PanelTopClose, PanelTopOpen, Settings2, Sun, X } from 'lucide-react';
+import { Activity, BookOpen, ChevronDown, CircleAlert, CodeXml, FlaskConical, Focus, LayoutPanelTop, ListTree, Maximize, Minimize, Moon, PanelBottomOpen, PanelTopClose, PanelTopOpen, Settings2, Sun, Variable, X } from 'lucide-react';
 import { Engine } from '../js/engine/engine.js';
 import { SAMPLES } from '../js/samples.js';
 import { diffs } from '../js/views/basic.js';
 import { narrateStep } from './stepNarration';
 import { Inspector, type InspectionTab } from './Inspector';
+import { VariableSnapshot } from './VariableSnapshot';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { Watch } from './Watch';
@@ -148,6 +149,7 @@ function App() {
   const watchStepsPreference = useRef(prefs.watchSteps);
   watchStepsPreference.current = prefs.watchSteps;
   const showStepNote = inspectFullscreen ? prefs.fullscreenSteps !== false : prefs.views.narration;
+  const showFullscreenVariables = inspectFullscreen && Boolean(prefs.inspectFullscreenVariables);
   const inspectTree = prefs.views.calls && (prefs.explicitTree === true || Boolean(replay?.watch.calls.length && !replay.watch.backtracking));
   const inspectViews = useMemo(() => ({ ...prefs.views, calls: inspectTree }), [inspectTree, prefs.views]);
   const draftHasChanges = replay?.source.key === myCode && draft !== replay.source.code;
@@ -547,7 +549,7 @@ function App() {
             }}>
             <Panel id="visualization" className="visualization-panel" minSize="195px">
               <section className="pane visualization" aria-label="Visualization">
-                <div className="pane-header">
+                <div className="pane-header visualization-header">
                   <div className="pane-title"><Activity /><h2>Execution state</h2>{step?.done && <span className="badge success">Complete</span>}</div>
                   <div className="stage-actions">
                     {!inspectFullscreen && replay?.source.key.startsWith('interview:') && <a href="#interview" className="button neutral compact inspect-study-back"
@@ -558,6 +560,9 @@ function App() {
                     {!prefs.inspector && !mobile && !inspectFullscreen && <button type="button" className="icon-button" title="Show inspector" aria-label="Show inspector" onClick={() => setPrefs(old => ({ ...old, inspector: true }))}><PanelBottomOpen /></button>}
                     {inspectFullscreen && <button type="button" className="button neutral compact fullscreen-step-toggle" aria-pressed={showStepNote}
                       onClick={() => setPrefs(old => ({ ...old, fullscreenSteps: old.fullscreenSteps === false }))}>Step explanation</button>}
+                    {inspectFullscreen && <button type="button" className="button neutral compact fullscreen-variable-toggle" aria-label="Show variables" title="Show variables"
+                      aria-pressed={showFullscreenVariables} aria-controls={showFullscreenVariables ? 'inspect-fullscreen-variables' : undefined}
+                      onClick={() => setPrefs(old => ({ ...old, inspectFullscreenVariables: !old.inspectFullscreenVariables }))}><Variable /><span>Variables</span></button>}
                     {(!mobile || inspectFullscreen) && <button ref={inspectExpand} type="button" className="icon-button inspect-expand"
                       aria-label={inspectFullscreen ? 'Exit Inspect fullscreen' : 'Fullscreen Inspect'}
                       title={inspectFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen Inspect'}
@@ -587,6 +592,8 @@ function App() {
                   {step.l > 0 && !step.error && !step.exc && !step.done && <span className="next-line">Runs next · line {step.l}</span>}
                   {!inspectFullscreen && changes.length > 0 && <div className="change-list">{changes.map((change, position) => <code key={position}>{change}</code>)}</div>}
                 </div>}
+                {showFullscreenVariables && <VariableSnapshot key={replay?.id} id="inspect-fullscreen-variables" label="Inspect fullscreen variables" fullscreen
+                  step={step} previous={previous} />}
                 {!stageVisible && <div className="empty-visual"><LayoutPanelTop /><p>Visualizations are hidden.</p>
                   <button className="button neutral compact" type="button" onClick={() => setPrefs(old => ({ ...old,
                     views: { ...old.views, ...Object.fromEntries(rendererOptions.map(([key]) => [key, true])) },
@@ -622,6 +629,8 @@ function App() {
       onSpeed={speed => setPrefs(old => ({ ...old, speed }))} onWrite={openMyCode} onInterview={() => navigate('interview')} onExamples={openExamples}
       onPause={pause} onInspect={inspectMoment}
       desktop={!mobile} showTree={watchTree} showStack={watchStack} showVariables={Boolean(prefs.watchVariables)}
+      showFullscreenVariables={Boolean(prefs.watchFullscreenVariables)}
+      onFullscreenVariables={() => setPrefs(old => ({ ...old, watchFullscreenVariables: !old.watchFullscreenVariables }))}
       onTree={() => setCallView('calls', !watchTree)} onStack={() => setCallView('stack', !watchStack)}
       onVariables={() => setPrefs(old => ({ ...old, watchVariables: !old.watchVariables }))} />
     {!inspectFullscreen && timeline}

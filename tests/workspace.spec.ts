@@ -236,6 +236,46 @@ test('compact Inspect opens on the visuals and keeps drawing in fullscreen', asy
   await expect(cards.first()).toBeInViewport();
 });
 
+test('fullscreen variable panels follow playback and stay separate from normal views', async ({ page }) => {
+  await offline(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(Element.prototype, 'requestFullscreen', { value: () => Promise.reject(Error('Unavailable')) });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#watch');
+  await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
+  const watch = page.getByRole('dialog', { name: 'Algorithm player' });
+  const watchToggle = watch.getByRole('button', { name: 'Show variables' });
+  const watchVars = watch.getByRole('region', { name: 'Watch fullscreen variables' });
+  await expect(watchToggle).toHaveAttribute('aria-pressed', 'false');
+  await watchToggle.click();
+  await expect(watchVars).toContainText('[5, 2, 9, 1, 6]');
+  await watch.getByRole('button', { name: 'Next event' }).click();
+  await watch.getByRole('button', { name: 'Next event' }).click();
+  await expect(watchVars).toContainText('[2, 5, 9, 1, 6]');
+  await expect(watchVars.getByLabel('Changed')).toBeVisible();
+  await expect(watch.getByRole('button', { name: 'Play', exact: true })).toBeInViewport();
+  await watch.getByRole('button', { name: 'Exit fullscreen' }).click();
+  await expect(page.getByRole('region', { name: 'Watch variables', exact: true })).toBeHidden();
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Inspect fullscreen' }).click();
+  const inspect = page.getByRole('dialog', { name: 'Inspect fullscreen' });
+  const inspectToggle = inspect.getByRole('button', { name: 'Show variables' });
+  const inspectVars = inspect.getByRole('region', { name: 'Inspect fullscreen variables' });
+  await expect(inspectToggle).toHaveAttribute('aria-pressed', 'false');
+  await inspectToggle.click();
+  await expect(inspectVars).toContainText('[2, 5, 9, 1, 6]');
+  await inspect.getByRole('slider', { name: 'Playback step' }).press('End');
+  await expect(inspectVars).toContainText('[1, 2, 5, 6, 9]');
+  await expect(inspect.locator('#stage .obj:visible').first()).toBeInViewport();
+  await expect(inspect.getByRole('button', { name: 'Replay', exact: true })).toBeInViewport();
+  await inspectToggle.click();
+  await expect(inspectVars).toBeHidden();
+  await inspect.getByRole('button', { name: 'Exit Inspect fullscreen' }).click();
+  await expect(page.getByRole('region', { name: 'Inspector', exact: true })).toBeVisible();
+});
+
 test('independent views, presets, and event navigation preserve playback', async ({ page }) => {
   await offline(page);
   await page.goto('/#watch');
