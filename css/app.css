@@ -134,6 +134,7 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; width: 15px; he
 .supporting-visuals { align-self: flex-start; margin: 5px 12px; }
 .visual-stage { background-color: var(--panel-soft); background-image: linear-gradient(#a1b1e137 1px, transparent 1px), linear-gradient(90deg, #a1b1e137 1px, transparent 1px); background-size: 20px 20px; overflow: auto; padding: 13px; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 11px; }
 .visual-stage.void::before { content: 'Arrays, graphs and other values appear as your code runs.'; text-align: center; color: var(--mu); margin: auto; max-width: 250px; padding: 15px; }
+.visual-stage.void[data-can-advance]::before { content: 'No visual at this step. Press Play or Next step to continue.'; }
 .visual-stage.void[data-hidden-cards]::before { content: 'All current visualizations are hidden. Show one from the list above.'; }
 .empty-visual { flex: 1; min-height: 0; display: grid; place-content: center; justify-items: center; text-align: center; color: var(--mu); padding: 10px; }
 .empty-visual p { font-weight: 650; color: var(--ink); margin: 6px 0 0; }

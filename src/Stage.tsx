@@ -91,7 +91,8 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
         <div>{hidden.map(([id, label]) => <button key={id} type="button" className="button neutral compact"
           onClick={() => controls.current?.restore(id)}>Show {label}</button>)}</div>
       </details>}
-      <div id="stage" className="visual-stage void" ref={host} tabIndex={-1} aria-label="Visualizations" />
+      <div id="stage" className="visual-stage void" ref={host} tabIndex={-1} aria-label="Visualizations"
+        data-can-advance={replay && index < replay.steps.length - 1 ? '' : undefined} />
       {withSummary && createPortal(<>
         <div className="hd">{model && showDecision ? 'Backtracking state' : topic?.name}</div>
         {model && showDecision && <DecisionState model={model} index={index} decision={model.decisions.get(index)} compact focus={focus} />}

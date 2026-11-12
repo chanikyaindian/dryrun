@@ -198,6 +198,8 @@ test('Write can run an edited draft directly in fullscreen Inspect', async ({ pa
   await writeActions(page).getByRole('button', { name: 'Inspect fullscreen', exact: true }).click();
   await expect(page).toHaveURL(/#inspect$/, { timeout: 90000 });
   await expect(page.getByRole('dialog', { name: 'Inspect fullscreen' })).toBeVisible();
+  await page.getByRole('slider', { name: 'Playback step' }).press('End');
+  await expect(page.locator('#stage .obj:visible').first()).toBeInViewport();
   await page.getByRole('button', { name: 'Exit Inspect fullscreen' }).click();
   const navigation = page.getByRole('navigation', { name: 'Dryrun pages' });
   await navigation.getByRole('button', { name: 'Inspect fullscreen' }).click();
@@ -206,6 +208,32 @@ test('Write can run an edited draft directly in fullscreen Inspect', async ({ pa
   await last(page);
   await page.getByRole('tab', { name: 'Output' }).click();
   await expect(page.getByRole('tabpanel')).toContainText('6');
+});
+
+test('compact Inspect opens on the visuals and keeps drawing in fullscreen', async ({ page }) => {
+  await offline(page);
+  await page.setViewportSize({ width: 680, height: 760 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Bubble sort', exact: true }).click();
+  await writeActions(page).getByRole('button', { name: 'Inspect fullscreen', exact: true }).click();
+  const fullscreen = page.getByRole('dialog', { name: 'Inspect fullscreen' });
+  const cards = page.locator('#stage .obj:visible');
+  await expect(fullscreen.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+  await fullscreen.getByRole('button', { name: 'Next step', exact: true }).click();
+  await expect(cards.first()).toBeInViewport();
+  await fullscreen.getByRole('button', { name: 'Exit Inspect fullscreen' }).click();
+  const sections = page.getByRole('navigation', { name: 'Workspace sections' });
+  await expect(sections.getByRole('button', { name: 'Visualize', exact: true })).toHaveAttribute('aria-current', 'page');
+  await sections.getByRole('button', { name: 'Code', exact: true }).click();
+  await expect(editor(page)).toBeInViewport();
+  await expect(cards).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Examples', exact: true }).click();
+  await page.getByRole('button', { name: 'BFS with queue', exact: true }).click();
+  await writeActions(page).getByRole('button', { name: 'Inspect', exact: true }).click();
+  await expect(sections.getByRole('button', { name: 'Visualize', exact: true })).toHaveAttribute('aria-current', 'page');
+  await slider(page).press('End');
+  await expect(cards.first()).toBeInViewport();
 });
 
 test('independent views, presets, and event navigation preserve playback', async ({ page }) => {
@@ -281,7 +309,7 @@ test('mobile custom runs, retained draft, stale replay, syntax diagnostics', asy
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#watch');
   await inspect(page);
-  await expect(page.getByRole('button', { name: 'Code', exact: true })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Workspace sections' }).getByRole('button', { name: 'Code', exact: true }).click();
   await expect(editor(page)).toBeInViewport();
   expect((await page.getByRole('region', { name: 'Code editor' }).boundingBox())!.height).toBeGreaterThan(450);
   await example(page, 'My code');

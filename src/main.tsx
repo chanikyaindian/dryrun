@@ -118,7 +118,7 @@ function App() {
   const showNavbarControl = navbarHidden && !inspectFullscreen && !immersed;
   const [playback, dispatch] = useReducer(playbackReducer, initialPlayback);
   const pause = useCallback(() => dispatch({ type: 'pause' }), []);
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('code');
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('visualize');
   const [inspectionTab, setInspectionTab] = useState<InspectionTab>('variables');
   const [focusedVariable, setFocusedVariable] = useState('');
   const [replacement, setReplacement] = useState<string | null>(null);
@@ -159,6 +159,7 @@ function App() {
   const editorMatches = inspecting ? Boolean(replay) : sameSource;
   const issue = writing && draftIssue?.source === source ? draftIssue.step : undefined;
   const editorStep = issue ?? (editorMatches ? step : undefined);
+  const activeWorkspaceTab = writing ? 'code' : inspectFullscreen && mobile ? 'visualize' : workspaceTab;
   const stageVisible = stageKeys.some(key => inspectViews[key]);
   const frame = step?.F.at(-1);
   const changes = inspecting && step && previous && showStepNote && step.F.length === previous.F.length ? diffs(previous, step) : [];
@@ -228,7 +229,7 @@ function App() {
       const showWatch = (destination === 'watch' || intro) && same && origin === modeRef.current && !result.steps[0]?.syntax;
       dispatch({ type: 'ready', replay: result, watch: showWatch, allSteps: watchStepsPreference.current ?? Boolean(document.lesson) });
       if (destination && same && origin === modeRef.current) {
-        setWorkspaceTab('code');
+        if (!showWatch) setWorkspaceTab('visualize');
         navigate(showWatch ? 'watch' : 'inspect', document);
         if (destination === 'inspect-fullscreen') enterInspectFullscreen(false);
       }
@@ -244,6 +245,7 @@ function App() {
       const target = readMode();
       modeRef.current = target;
       if (target === 'write') setDocKey(myCode);
+      if (target === 'inspect') setWorkspaceTab('visualize');
       setMode(target);
       pause();
       const original = readCatalogDocument(target);
@@ -305,7 +307,10 @@ function App() {
     inspectNative.current = false;
     setInspectFullscreen(false);
     if (workspace.current && document.fullscreenElement === workspace.current) void document.exitFullscreen().catch(() => {});
-    requestAnimationFrame(() => inspectExpand.current?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => {
+      const target = inspectExpand.current ?? document.querySelector<HTMLElement>('.workspace-tabs [aria-current="page"]');
+      target?.focus({ preventScroll: true });
+    });
   }, []);
   useEffect(() => {
     if (!inspectFullscreen) return;
@@ -408,8 +413,8 @@ function App() {
     openMyCode();
     void run({ key: myCode, code: draft }, 'inspect');
   }
-  function inspectMoment(output = false, fromWatch = false) {
-    setWorkspaceTab(output ? 'inspect' : fromWatch && mobile ? 'visualize' : 'code');
+  function inspectMoment(output = false) {
+    setWorkspaceTab(output ? 'inspect' : 'visualize');
     if (output) {
       setInspectionTab('output');
       setPrefs(old => ({ ...old, inspector: true }));
@@ -497,7 +502,7 @@ function App() {
     </nav>
 
     <main ref={workspace} className={'workspace' + (writing ? ' write-workspace' : '') + (inspectFullscreen ? ' inspect-fullscreen' : '')}
-      hidden={!inspecting && !writing} data-tab={inspectFullscreen && mobile ? 'visualize' : workspaceTab}
+      hidden={!inspecting && !writing} data-tab={activeWorkspaceTab}
       role={inspectFullscreen ? 'dialog' : undefined} aria-modal={inspectFullscreen || undefined}
       aria-label={inspectFullscreen ? 'Inspect fullscreen' : undefined}
       aria-description={inspectFullscreen ? 'Use the playback controls below the workspace. Press Escape to leave.' : undefined}>
@@ -588,7 +593,7 @@ function App() {
                   }))}>Show visualizations</button></div>}
                 <div className="stage-shell" hidden={!stageVisible}>
                   <Stage replay={replay} index={index} views={inspectViews} focus={focusedVariable} speed={prefs.speed} motion={playback.motion}
-                    visible={inspecting && stageVisible && (!mobile || workspaceTab === 'visualize')} onInteract={pause} desktop={!mobile} />
+                    visible={inspecting && stageVisible && (!mobile || activeWorkspaceTab === 'visualize')} onInteract={pause} desktop={!mobile} />
                 </div>
                 {stageVisible && <div className="legend"><span><i /> Just changed</span><span><i /> Active index</span><span><i /> Value read</span></div>}
               </section>
@@ -605,7 +610,7 @@ function App() {
           </div>
         </Panel>
       </Group>
-      {mobile && inspecting && step?.error && workspaceTab !== 'code' && <div className="mobile-status" role="status">{step.error}</div>}
+      {mobile && inspecting && step?.error && activeWorkspaceTab !== 'code' && <div className="mobile-status" role="status">{step.error}</div>}
       {inspectFullscreen && timeline}
     </main>
 
@@ -615,7 +620,7 @@ function App() {
       onPlay={() => dispatch({ type: 'play', watch: true, allSteps: allWatchSteps })} onFullscreen={setImmersed}
       onDetail={allSteps => { pause(); setPrefs(old => ({ ...old, watchSteps: allSteps })); }}
       onSpeed={speed => setPrefs(old => ({ ...old, speed }))} onWrite={openMyCode} onInterview={() => navigate('interview')} onExamples={openExamples}
-      onPause={pause} onInspect={output => inspectMoment(output, true)}
+      onPause={pause} onInspect={inspectMoment}
       desktop={!mobile} showTree={watchTree} showStack={watchStack} showVariables={Boolean(prefs.watchVariables)}
       onTree={() => setCallView('calls', !watchTree)} onStack={() => setCallView('stack', !watchStack)}
       onVariables={() => setPrefs(old => ({ ...old, watchVariables: !old.watchVariables }))} />
