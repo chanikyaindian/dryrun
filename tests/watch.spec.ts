@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { SAMPLES } from '../js/samples.js';
 
 const player = (page: Page) => page.locator('.watch-player');
@@ -27,6 +27,59 @@ async function findBeat(page: Page, text: RegExp) {
   }
   await expect(caption).toHaveText(text);
 }
+test('string reversal shows every prepended character in Watch and Inspect', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/#write');
+  await custom(page, `def reverse_string(s):
+    reversed_str = ""
+    for char in s:
+        reversed_str = char + reversed_str
+    return reversed_str
+
+print(reverse_string("hello"))  # Output: "olleh"`);
+  const canvas = player(page).locator('.watch-canvas');
+  const result = (root: Locator) => root.getByRole('region', { name: 'reversed_str', exact: true });
+  await expect(canvas).toHaveAttribute('data-scene', 'topic');
+  await expect(canvas.getByRole('region', { name: 's', exact: true }).locator('code')).toHaveText([... 'hello']);
+  await expect(result(canvas)).toContainText('Empty');
+  for (const [i, value] of ['h', 'eh', 'leh', 'lleh', 'olleh'].entries()) {
+    await next(page).click();
+    await expect(result(canvas).locator('code')).toHaveText([...value]);
+    await expect(result(canvas).locator('[data-active="true"] code')).toHaveText(value[0]);
+    await expect(canvas.locator('[data-topic-pointer="s:char"]').locator('..').locator('..').locator('small')).toHaveText(String(i));
+    await expect(player(page).locator('.watch-caption')).toContainText('to the front');
+  }
+  await timeline(page).press('End');
+  await expect(result(canvas).locator('code')).toHaveText([... 'olleh']);
+  await player(page).getByRole('button', { name: 'Inspect this moment' }).click();
+  const stage = page.locator('#stage');
+  await expect(result(stage).locator('code')).toHaveText([... 'olleh']);
+  await page.getByRole('slider', { name: 'Playback step' }).press('Home');
+  await expect(result(stage)).toBeHidden();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(result(stage).locator('[data-active="true"] code')).toHaveText('h');
+});
+
+test('compact Inspect highlights characters appended with +=', async ({ page }) => {
+  await page.setViewportSize({ width: 680, height: 760 });
+  await page.goto('/#write');
+  await page.getByLabel('Python code', { exact: true }).fill(`text = "😀a"
+built = ""
+for letter in text:
+    built += letter
+print(built)`);
+  await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Inspect', exact: true }).click();
+  const slider = page.getByRole('slider', { name: 'Playback step' });
+  await expect(slider).toBeVisible({ timeout: 90000 });
+  const stage = page.locator('#stage');
+  const result = stage.getByRole('region', { name: 'built', exact: true });
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(result.locator('[data-active="true"] code')).toHaveText('😀');
+  await expect(result.locator('[data-active="true"] code')).toHaveText('a');
+  await slider.press('End');
+  await expect(result.locator('code')).toHaveText(['😀', 'a']);
+});
+
 test('default Watch hides debugging chrome and Inspect opens at the same line', async ({ page }) => {
   await page.context().route('https://cdn.jsdelivr.net/**', route => route.abort());
   await page.goto('/#watch');

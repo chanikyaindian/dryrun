@@ -498,11 +498,94 @@ function setsRule(source: string): Rule | undefined {
   };
 }
 
+function stringBuilderRule(source: string): Rule | undefined {
+  const lines = source.split('\n');
+  const loop = expr('^for\\s+%\\s+in\\s+%\\s*:$');
+  const loops = lines.flatMap(line => {
+    const match = loop.exec(line);
+    return match ? [{ char: match[1], input: match[2] }] : [];
+  });
+  if (!loops.length) return;
+
+  const concat = expr('^%\\s*=\\s*%\\s*\\+\\s*%$');
+  const append = expr('^%\\s*\\+=\\s*%$');
+  type Builder = { char: string; input: string; output: string; prepend: boolean };
+  const candidates = new Map<string, Builder[]>();
+  for (const line of lines) {
+    const binary = concat.exec(line), augmented = append.exec(line);
+    const output = binary?.[1] ?? augmented?.[1];
+    if (!output) continue;
+    const choices = loops.flatMap(({ char, input }) => {
+      if (output === input || output === char) return [];
+      const prepend = binary?.[2] === char && binary[3] === output;
+      return prepend || (binary?.[2] === output && binary[3] === char) || augmented?.[2] === char
+        ? [{ char, input, output, prepend }] : [];
+    });
+    if (choices.length) candidates.set(line, choices);
+  }
+  if (!candidates.size) return;
+
+  type Snapshot = { input: string; output?: string; cursor?: number };
+  const states = new WeakMap<Step, Snapshot>();
+  let active: Builder | undefined;
+  let scope: string | undefined;
+  let latest: Snapshot | undefined;
+  const scopeOf = (step: Step) => step.F.length + ':' + step.F.at(-1)?.n;
+  function snapshot(step: Step, builder: Builder): Snapshot | undefined {
+    const values = step.F.at(-1)?.v;
+    const input = values?.[builder.input], output = values?.[builder.output];
+    if (typeof input === 'string') return { input, output: typeof output === 'string' ? output : undefined };
+  }
+  return {
+    name: 'String building', variables: [],
+    // Expose the same trace view in compact Inspect, even between writes.
+    traceCue: (_step, previous) => ({ operation: 'Execution step', label: '', line: previous.l }),
+    view(step, cue) {
+      if (!active) return {};
+      const state = states.get(step) ?? (scopeOf(step) === scope ? snapshot(step, active) : undefined);
+      if (!state) return {};
+      return { rows: [
+        { name: active.input, values: [...state.input], index: true, characters: true, related: cue?.related,
+          pointers: state.cursor === undefined ? undefined : [{ name: active.char, index: state.cursor }] },
+        ...(state.output === undefined ? [] : [{ name: active.output, values: [...state.output], characters: true, active: cue?.active }]),
+      ] };
+    },
+    event(before, after, line) {
+      const frame = scopeOf(before);
+      if (frame === scopeOf(after)) {
+        for (const builder of candidates.get(line) ?? []) {
+          if (active && (builder.input !== active.input || builder.output !== active.output || builder.char !== active.char || frame !== scope)) continue;
+          const prior = snapshot(before, builder), next = snapshot(after, builder);
+          const char = before.F.at(-1)?.v[builder.char];
+          if (!prior || !next || prior.output === undefined || typeof char !== 'string' || [...char].length !== 1 ||
+              prior.input !== next.input || next.output !== (builder.prepend ? char + prior.output : prior.output + char)) continue;
+          const index = [...prior.output].length;
+          if ([...prior.input][index] !== char) continue;
+          active = builder;
+          scope = frame;
+          latest = { ...next, cursor: index };
+          states.set(after, latest);
+          const added = JSON.stringify(char);
+          return event(builder.prepend ? 'Prepend character' : 'Append character',
+            'Add ' + added + ' to the ' + (builder.prepend ? 'front' : 'end') + ' of ' + builder.output + '.',
+            [builder.prepend ? 0 : index], [index]);
+        }
+      }
+      if (active && scopeOf(after) === scope) {
+        const next = snapshot(after, active);
+        if (next && (next.input !== latest?.input || next.output !== latest?.output)) latest = next;
+      }
+      // Keep the final string visible after the function's local frame exits.
+      if (latest) states.set(after, latest);
+    },
+  };
+}
+
 export function traceTopic(lines: string[], steps: Step[]): Topic | undefined {
   const statements = lines.map(line => line.replace(/\s+#.*$/, '').trim());
   const source = statements.join('\n');
   const rules = [windowRule, kadaneRule, insertionRule, knapsackRule, stackRule, distancesRule, heapRule, hashRule,
-    intervalRule, trieRule, pointersRule, prefixRule, bitsRule, setsRule, lifoRule];
+    intervalRule, trieRule, pointersRule, prefixRule, bitsRule, setsRule, lifoRule, stringBuilderRule];
   for (const recognize of rules) {
     const rule = recognize(source);
     if (!rule) continue;
