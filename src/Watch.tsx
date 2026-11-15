@@ -98,7 +98,7 @@ function ArrayScene({ replay, step, beat, moving, speed, allSteps }: { replay: R
             <span title={format(value)}>{isAtom(value) ? format(value) : rp(step.H, value)}</span>
           </div></div>
           <span className="array-index">{index}</span>
-          <span className="array-role">{roles.join(' · ')}</span>
+          <span className="array-role">{roles.join(' Â· ')}</span>
         </div>;
       })}
     </div>
@@ -164,7 +164,7 @@ function GraphScene({ scene, step, current, processed, beat, moving, speed, zoom
 
 function QueueScene({ queue, beat }: { queue: unknown[]; beat?: Beat }) {
   return <div className="watch-queue" aria-label="Queue">
-      <span>Queue · front on left</span>
+      <span>Queue Â· front on left</span>
       {queue.length ? <ol>{queue.map((value, i) => <li key={i} data-cue={beat?.kind === 'enqueue' && i === queue.length - 1 ? '' : undefined}>{format(value)}</li>)}</ol> :
         <span className="queue-empty">Empty</span>}
       {beat?.kind === 'dequeue' && <small data-cue>Dequeued {format(beat.node)}</small>}
@@ -271,7 +271,7 @@ function LinkedScene({ scene, step, beat, moving, speed, pointers, changes }: {
     <svg className="linked-plot" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Node links">
       <defs><marker id="linked-tip" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 7 3.5 0 7Z" fill="var(--watch-accent)" /></marker></defs>
       {guide && origin && <g className="linked-guide"><line x1={origin[0]} y1={origin[1] + 18} x2={guide.x} y2={guide.y - 12} />
-        <text x={guide.x} y={guide.y} textAnchor="middle">{side} · empty</text></g>}
+        <text x={guide.x} y={guide.y} textAnchor="middle">{side} Â· empty</text></g>}
       {shown.flatMap(node => node.links.flatMap(link => {
         const end = positions.get(link.to);
         if (!end) return [];
@@ -298,7 +298,7 @@ function LinkedScene({ scene, step, beat, moving, speed, pointers, changes }: {
         const active = Boolean(names || changes?.[node.id] || beat?.link?.from === node.id);
         return <g key={node.id} transform={`translate(${x} ${y})`} className="linked-node" data-active={active} data-cue={active ? '' : undefined}>
           <title>{node.label}</title><rect x="-31" y="-18" width="62" height="36" rx="6" />
-          <text textAnchor="middle" dy=".35em">{node.label.length > 7 ? node.label.slice(0, 6) + '…' : node.label}</text>
+          <text textAnchor="middle" dy=".35em">{node.label.length > 7 ? node.label.slice(0, 6) + 'â€¦' : node.label}</text>
           {names && <text className="linked-pointer" textAnchor="middle" y={tree ? -26 : 34}>{names}</text>}
         </g>;
       })}
@@ -491,57 +491,64 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
         </ol>
       </section>}
     </aside>}
-    <div className="watch-dock" aria-label="Watch playback">
-      <button type="button" className="watch-icon watch-step" title={allSteps ? 'Previous step' : 'Previous event'} aria-label={allSteps ? 'Previous step' : 'Previous event'} disabled={!count || index <= first} onClick={() => onMove(-1)}><ChevronLeft /></button>
-      <button type="button" className="watch-play" aria-label={playing ? 'Pause' : done && canPlay ? 'Replay' : 'Play'} disabled={!canPlay} onClick={onPlay}>
-        {playing ? <Pause /> : done ? <RotateCcw /> : <Play />}
-      </button>
-      <button type="button" className="watch-icon watch-step" title={allSteps ? 'Next step' : 'Next event'} aria-label={allSteps ? 'Next step' : 'Next event'} disabled={done} onClick={() => onMove(1)}><ChevronRight /></button>
-      <input type="range" aria-label={allSteps ? 'Watch step' : 'Watch event'} min="0" max={Math.max(1, count - 1)} value={cursor} disabled={!canPlay}
-        style={{ '--progress': (canPlay ? cursor / (count - 1) * 100 : 0) + '%' } as CSSProperties}
-        onChange={event => { const target = Number(event.target.value); onSeek(allSteps ? target : beats[target].index); }} />
-      <span className="watch-count">{allSteps ? cursor : count ? cursor + 1 : 0}<span> / {allSteps ? Math.max(0, count - 1) : count}</span></span>
-      <select className="watch-detail" aria-label="Playback detail" value={allSteps ? 'steps' : 'highlights'} onChange={event => onDetail(event.target.value === 'steps')}>
-        <option value="steps">All steps</option><option value="highlights">Highlights</option>
-      </select>
-      <select className="watch-speed" aria-label="Playback speed" value={speed} onChange={event => onSpeed(Number(event.target.value))}>
-        <option value={1000}>Slow</option><option value={560}>Normal</option><option value={240}>Fast</option>
-      </select>
-      {canZoom && <div className="watch-zoom">
-        {showingTree && <button type="button" className="watch-tree-action" aria-label="Fit tree" aria-pressed={fitTree}
-          onClick={() => { setFitTree(true); setZoom(1); }}>Fit</button>}
-        {showingTree && <button type="button" className="watch-tree-action" aria-label="Follow active call" aria-pressed={!fitTree}
-          onClick={() => { setFitTree(false); setZoom(1); }}>Follow</button>}
-        <button type="button" className="watch-icon" aria-label="Zoom out" disabled={zoom <= 1} onClick={() => setZoom(value => Math.max(1, value - .25))}><Minus /></button>
-        <button type="button" className="watch-icon" aria-label="Zoom in" disabled={zoom >= 2} onClick={() => {
-          if (showingTree) setFitTree(false);
-          setZoom(value => Math.min(2, value + .25));
-        }}><Plus /></button>
-      </div>}
-      <button type="button" className="watch-icon fullscreen-variable-toggle" aria-label="Show variables" title="Show variables"
-        disabled={!step} aria-pressed={showVariables} aria-controls={showVariables ? 'watch-variables' : undefined}
-        onClick={onVariables}><Variable />{desktop && <span>Variables</span>}</button>
-      <details className="watch-view" ref={settings} onKeyDown={event => {
-        if (event.key !== 'Escape' || !event.currentTarget.open) return;
-        event.preventDefault();
-        event.currentTarget.open = false;
-        event.currentTarget.querySelector('summary')?.focus();
-      }}>
-        <summary className="watch-icon" role="button" aria-label="Playback options" title="Playback options"><Settings2 /></summary>
-        <div className="watch-view-menu">
-          {replay && <button type="button" className="button neutral compact" onClick={() => { if (full) leave(); onInspect(); }}><ListTree />Inspect this step</button>}
-          {canOpenOutput && <button type="button" className="button neutral compact" onClick={() => { if (full) leave(); onInspect(true); }}>View output</button>}
-          {hasTree && <label><input type="checkbox" checked={showTree} onChange={onTree} />Call tree</label>}
-          <label><input type="checkbox" checked={showStack} onChange={onStack} />Call stack</label>
-          {!full && replay && !allSteps && <Prediction key={replay.id} replay={replay} index={index} onPause={onPause} onReveal={() => onMove(1)} />}
-          {replay && replay.source.key !== 'my-code' && <a className="button neutral compact" href={replay.source.key.startsWith('interview:') ? '#interview' : '#library'}
-            onClick={event => { event.preventDefault(); if (full) leave(); (replay.source.key.startsWith('interview:') ? onInterview : onExamples)(); }}>
-            {replay.source.key.startsWith('interview:') ? 'Back to study plan' : 'Back to examples'}</a>}
-          <button type="button" className="button neutral compact" onClick={() => { if (full) leave(); onWrite(); }}><CodeXml />Custom code</button>
-        </div>
-      </details>
-      {full ? <button type="button" className="watch-icon watch-exit" aria-label="Exit fullscreen" title="Exit fullscreen (Esc)" onClick={leave}><Minimize />{desktop && <span>Exit</span>}</button> :
-        <button ref={expand} type="button" className="watch-icon" aria-label="Fullscreen" title="Fullscreen" disabled={!step} onClick={enter}><Maximize /></button>}
+    <div className="watch-dock playback-controls" role="group" aria-label="Watch playback">
+      <div className="watch-transport">
+        <button type="button" className="watch-icon watch-step" title={allSteps ? 'Previous step' : 'Previous event'} aria-label={allSteps ? 'Previous step' : 'Previous event'} disabled={!count || index <= first} onClick={() => onMove(-1)}><ChevronLeft /></button>
+        <button type="button" className="watch-play" aria-label={playing ? 'Pause' : done && canPlay ? 'Replay' : 'Play'} disabled={!canPlay} onClick={onPlay}>
+          {playing ? <Pause /> : done ? <RotateCcw /> : <Play />}
+        </button>
+        <button type="button" className="watch-icon watch-step" title={allSteps ? 'Next step' : 'Next event'} aria-label={allSteps ? 'Next step' : 'Next event'} disabled={done} onClick={() => onMove(1)}><ChevronRight /></button>
+      </div>
+      <div className="watch-track">
+        <input className="playback-scrubber" type="range" aria-label={allSteps ? 'Watch step' : 'Watch event'} min="0" max={Math.max(1, count - 1)} value={cursor} disabled={!canPlay}
+          aria-valuetext={allSteps ? `Step ${cursor} of ${Math.max(0, count - 1)}` : `Highlight ${count ? cursor + 1 : 0} of ${count}`}
+          style={{ '--progress': (canPlay ? cursor / (count - 1) * 100 : 0) + '%' } as CSSProperties}
+          onChange={event => { const target = Number(event.target.value); onSeek(allSteps ? target : beats[target].index); }} />
+        <span className="watch-count">{allSteps ? cursor : count ? cursor + 1 : 0}<span> / {allSteps ? Math.max(0, count - 1) : count}</span></span>
+      </div>
+      <div className="watch-tools">
+        <select className="watch-detail" aria-label="Playback detail" value={allSteps ? 'steps' : 'highlights'} onChange={event => onDetail(event.target.value === 'steps')}>
+          <option value="steps">All steps</option><option value="highlights">Highlights</option>
+        </select>
+        <select className="watch-speed" aria-label="Playback speed" value={speed} onChange={event => onSpeed(Number(event.target.value))}>
+          <option value={1000}>Slow</option><option value={560}>Normal</option><option value={240}>Fast</option>
+        </select>
+        {canZoom && <div className="watch-zoom">
+          {showingTree && <button type="button" className="watch-tree-action" aria-label="Fit tree" aria-pressed={fitTree}
+            onClick={() => { setFitTree(true); setZoom(1); }}>Fit</button>}
+          {showingTree && <button type="button" className="watch-tree-action" aria-label="Follow active call" aria-pressed={!fitTree}
+            onClick={() => { setFitTree(false); setZoom(1); }}>Follow</button>}
+          <button type="button" className="watch-icon" aria-label="Zoom out" disabled={zoom <= 1} onClick={() => setZoom(value => Math.max(1, value - .25))}><Minus /></button>
+          <button type="button" className="watch-icon" aria-label="Zoom in" disabled={zoom >= 2} onClick={() => {
+            if (showingTree) setFitTree(false);
+            setZoom(value => Math.min(2, value + .25));
+          }}><Plus /></button>
+        </div>}
+        <button type="button" className="watch-icon fullscreen-variable-toggle" aria-label="Show variables" title="Show variables"
+          disabled={!step} aria-pressed={showVariables} aria-controls={showVariables ? 'watch-variables' : undefined}
+          onClick={onVariables}><Variable />{desktop && <span>Variables</span>}</button>
+        <details className="watch-view" ref={settings} onKeyDown={event => {
+          if (event.key !== 'Escape' || !event.currentTarget.open) return;
+          event.preventDefault();
+          event.currentTarget.open = false;
+          event.currentTarget.querySelector('summary')?.focus();
+        }}>
+          <summary className="watch-icon" role="button" aria-label="Playback options" title="Playback options"><Settings2 /></summary>
+          <div className="watch-view-menu">
+            {replay && <button type="button" className="button neutral compact" onClick={() => { if (full) leave(); onInspect(); }}><ListTree />Inspect this step</button>}
+            {canOpenOutput && <button type="button" className="button neutral compact" onClick={() => { if (full) leave(); onInspect(true); }}>View output</button>}
+            {hasTree && <label><input type="checkbox" checked={showTree} onChange={onTree} />Call tree</label>}
+            <label><input type="checkbox" checked={showStack} onChange={onStack} />Call stack</label>
+            {!full && replay && !allSteps && <Prediction key={replay.id} replay={replay} index={index} onPause={onPause} onReveal={() => onMove(1)} />}
+            {replay && replay.source.key !== 'my-code' && <a className="button neutral compact" href={replay.source.key.startsWith('interview:') ? '#interview' : '#library'}
+              onClick={event => { event.preventDefault(); if (full) leave(); (replay.source.key.startsWith('interview:') ? onInterview : onExamples)(); }}>
+              {replay.source.key.startsWith('interview:') ? 'Back to study plan' : 'Back to examples'}</a>}
+            <button type="button" className="button neutral compact" onClick={() => { if (full) leave(); onWrite(); }}><CodeXml />Custom code</button>
+          </div>
+        </details>
+        {full ? <button type="button" className="watch-icon watch-exit" aria-label="Exit fullscreen" title="Exit fullscreen (Esc)" onClick={leave}><Minimize />{desktop && <span>Exit</span>}</button> :
+          <button ref={expand} type="button" className="watch-icon" aria-label="Fullscreen" title="Fullscreen" disabled={!step} onClick={enter}><Maximize /></button>}
+      </div>
     </div>
   </main>;
 }

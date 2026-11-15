@@ -4,7 +4,6 @@ import { parseTrace } from '../js/engine/trace-boundary.js';
 async function inspectOutput(page: Page, source: string) {
   await page.getByRole('button', { name: 'Custom code', exact: true }).click();
   await page.getByRole('textbox', { name: 'Python code' }).fill(source);
-  await expect(page.getByText('CPython 3.13.2', { exact: true })).toBeVisible({ timeout: 80000 });
   await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Inspect', exact: true }).click();
   await expect(page.getByRole('slider', { name: 'Playback step' })).toBeVisible({ timeout: 90000 });
   await page.getByRole('button', { name: 'Last step' }).click();
@@ -105,7 +104,9 @@ test('the app rejects a tampered Python runtime download', async ({ page }) => {
   await page.route('https://cdn.jsdelivr.net/pyodide/v0.29.5/full/pyodide.js', route =>
     route.fulfill({ contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: 'throw Error("tampered");' }));
   await page.goto('/#write');
-  await expect(page.getByText('Python unavailable', { exact: true })).toBeVisible({ timeout: 35000 });
+  await page.getByRole('textbox', { name: 'Python code' }).fill('print(123)');
+  await page.getByRole('button', { name: 'Run code', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Output', exact: true })).toContainText('Could not load the Python runtime.', { timeout: 35000 });
   await expect(page.locator('iframe[title="Isolated Python runtime"]')).toHaveCount(0);
 });
 

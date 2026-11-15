@@ -142,7 +142,6 @@ function App() {
   const visibleDocument = useRef({ key: docKey, code: source });
   visibleDocument.current = { key: docKey, code: source };
   const mobile = useSyncExternalStore(callback => { media.addEventListener('change', callback); return () => media.removeEventListener('change', callback); }, () => media.matches);
-  const runtime = useSyncExternalStore(listener => Engine.subscribe(listener), () => Engine.status);
   const { replay, index, pending, playing } = playback;
   const step = replay?.steps[index], previous = replay?.steps[index - 1];
   const decision = replay?.watch.backtracking?.decisions.get(index);
@@ -487,7 +486,6 @@ function App() {
           onClick={() => setPrefs(old => ({ ...old, dark: !old.dark }))}>{prefs.dark ? <Sun /> : <Moon />}</button>
         <button ref={hideNavbar} type="button" className="icon-button" aria-label="Hide navbar" title="Hide navbar"
           aria-controls="app-navbar" aria-expanded={true} onClick={() => setNavbarHidden(true)}><PanelTopClose /></button>
-        {writing && <span className="runtime" title={runtime}><i data-ready={runtime.startsWith('CPython')} /><span>{runtime}</span></span>}
         {inspecting && <Popover title="View" icon={<Settings2 />}>{close => <>
           <div className="popover-heading">Layout <span>{activePreset ?? 'Custom'}</span></div>
           <div className="presets" aria-label="Layout presets">
@@ -546,6 +544,7 @@ function App() {
             </Suspense>
             <div className="editor-footer">
               <span>{editorCode.includes('\n') ? editorCode.split('\n').length + ' lines' : '1 line'}</span>
+              {writing && <span id="python-editor-shortcuts" className="editor-shortcuts" title="Press Escape then Tab to move focus out of the editor."><kbd>Ctrl</kbd> + <kbd>Space</kbd> for suggestions<span className="sr-only">. Press Escape then Tab to leave the editor.</span></span>}
               <span>{writing ? 'Draft saved on this device' : 'Recorded source'}</span>
             </div>
             {(inspecting || writing) && editorStep?.error && <div className="editor-error" role="status"><CircleAlert /><span>Line {editorStep.l || '—'}{editorStep.syntax?.column ? ', column ' + editorStep.syntax.column : ''} · {editorStep.error}</span></div>}

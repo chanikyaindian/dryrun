@@ -1,13 +1,15 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { EditorState, StateEffect, StateField } from '@codemirror/state';
 import { Decoration, EditorView, drawSelection, highlightActiveLineGutter, keymap, lineNumbers, placeholder, type DecorationSet } from '@codemirror/view';
-import { HighlightStyle, indentOnInput, bracketMatching, syntaxHighlighting } from '@codemirror/language';
+import { HighlightStyle, indentOnInput, indentUnit, bracketMatching, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { acceptCompletion, autocompletion, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { searchKeymap } from '@codemirror/search';
 import { python } from '@codemirror/lang-python';
 import { setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import type { Step } from './workspace';
+import { pythonCompletions } from './pythonCompletions';
 
 type Highlights = { last?: number; next?: number; bad?: number };
 const setHighlights = StateEffect.define<Highlights>();
@@ -47,6 +49,11 @@ const theme = EditorView.theme({
   '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection': { background: '#394c8d' },
   '.cm-panel': { background: '#27345f', color: '#e5eaff' },
   '.cm-panel input, .cm-panel button': { color: '#e5eaff', background: '#171e3d' },
+  '.cm-tooltip.cm-tooltip-autocomplete': { background: '#1d274a', border: '1px solid #526398', borderRadius: '8px', boxShadow: '0 8px 24px #080e2b66' },
+  '.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--mono)', padding: '4px', maxWidth: 'min(34ch, 75vw)' },
+  '.cm-tooltip-autocomplete > ul > li': { padding: '5px 8px', borderRadius: '4px' },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected]': { background: '#384d90', color: '#fff' },
+  '.cm-completionDetail': { color: '#becafa', fontStyle: 'normal', fontSize: '11px' },
 }, { dark: true });
 const syntax = HighlightStyle.define([
   { tag: [tags.keyword, tags.operatorKeyword], color: '#beb5ff' },
@@ -70,6 +77,7 @@ export function PythonEditor(props: Props) {
   latest.current = props;
 
   useLayoutEffect(() => {
+    const readOnly = latest.current.readOnly;
     const view = new EditorView({
       parent: host.current!,
       state: EditorState.create({
@@ -78,10 +86,15 @@ export function PythonEditor(props: Props) {
           theme, decorations, python(), lineNumbers(),
           history(), drawSelection(), bracketMatching(),
           indentOnInput(), highlightActiveLineGutter(), syntaxHighlighting(syntax),
-          EditorState.tabSize.of(4), EditorState.readOnly.of(latest.current.readOnly),
-          EditorView.editable.of(!latest.current.readOnly), placeholder('Paste or type Python code here…'),
+          EditorState.tabSize.of(4), indentUnit.of('    '), EditorState.readOnly.of(readOnly),
+          EditorView.editable.of(!readOnly), placeholder('Paste or type Python code here…'),
+          ...(!readOnly ? [
+            closeBrackets(),
+            autocompletion({ maxRenderedOptions: 8, override: pythonCompletions }),
+            keymap.of([...closeBracketsKeymap, { key: 'Tab', run: acceptCompletion }, indentWithTab]),
+          ] : []),
           EditorView.contentAttributes.of({ 'aria-label': 'Python code', spellcheck: 'false', autocapitalize: 'off',
-            ...(latest.current.readOnly ? { tabindex: '0', 'aria-readonly': 'true' } : {}) }),
+            ...(readOnly ? { tabindex: '0', 'aria-readonly': 'true' } : { 'aria-describedby': 'python-editor-shortcuts' }) }),
           keymap.of([{ key: 'Mod-Enter', run: () => { latest.current.onRun(); return true; } },
             ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
           EditorView.updateListener.of(update => {

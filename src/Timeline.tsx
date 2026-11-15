@@ -10,7 +10,7 @@ export function Timeline({ playback, speed, onSpeed, onSeek, onStep, onPlay, com
   const line = replay?.steps[index]?.l;
   const playLabel = playing ? 'Pause' : index === max && max > 0 ? 'Replay' : 'Play';
 
-  return <footer className={'timeline' + (compact ? ' timeline-compact' : '')} aria-label="Playback controls">
+  return <footer className={'timeline playback-controls' + (compact ? ' timeline-compact' : '')} aria-label="Playback controls">
     <div className="transport">
       {!compact && <button className="icon-button desktop-control" aria-label="First step" title="First step" disabled={!index || pending} onClick={() => onSeek(0)}><SkipBack /></button>}
       <button className="icon-button" aria-label="Previous step" title="Previous step" disabled={!index || pending} onClick={() => onStep(-1)}><ChevronLeft /></button>
@@ -26,7 +26,7 @@ export function Timeline({ playback, speed, onSpeed, onSeek, onStep, onPlay, com
         {!!line && <span className="timeline-location">Line {line}</span>}
       </div>
       <div className="scrub-wrap">
-        <input type="range" aria-label="Playback step" aria-valuetext={index + ' of ' + max} min={0} max={max || 1} disabled={!max || pending} value={index}
+        <input className="playback-scrubber" type="range" aria-label="Playback step" aria-valuetext={index + ' of ' + max} min={0} max={max || 1} disabled={!max || pending} value={index}
           style={{ '--progress': (max ? index / max * 100 : 0) + '%' } as React.CSSProperties}
           onChange={event => onSeek(Number(event.target.value))} />
       </div>

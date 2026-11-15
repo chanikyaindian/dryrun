@@ -239,6 +239,63 @@ test('compact Inspect opens on the visuals and keeps drawing in fullscreen', asy
   await expect(cards.first()).toBeInViewport();
 });
 
+test('Custom code indents Python and completes local names, DSA imports, and bracket pairs', async ({ page }) => {
+  await offline(page);
+  await page.goto('/#write');
+  const code = editor(page);
+  await expect(page.getByText(/CPython/)).toBeHidden();
+
+  await code.fill('def solve(values):');
+  await code.press('End');
+  await code.press('Enter');
+  await code.pressSequentially('result = ');
+  await code.press('[');
+  await expect(code.locator('.cm-line').nth(1)).toHaveText('    result = []', { useInnerText: true });
+  await code.press('1');
+  await code.press(']');
+  await code.press('Enter');
+  await code.pressSequentially('return val');
+  const local = page.getByRole('option', { name: 'values', exact: true });
+  await expect(local).toBeVisible();
+  await local.click();
+  await expect(code.locator('.cm-line').nth(2)).toHaveText('    return values', { useInnerText: true });
+
+  await code.fill('from collections import de');
+  await code.press('End');
+  await code.press('Control+Space');
+  await expect(page.getByRole('listbox')).not.toContainText('delattr');
+  await page.getByRole('option', { name: 'deque', exact: true }).click();
+  await expect(code).toHaveText('from collections import deque');
+
+  await code.fill('import heapq as hq\nhq.');
+  await code.press('Control+End');
+  await code.press('Control+Space');
+  const heapPush = page.getByRole('option', { name: 'heappush', exact: true });
+  await expect(heapPush).toBeVisible();
+  await heapPush.click();
+  await expect(code.locator('.cm-line').last()).toHaveText('hq.heappush');
+
+  await code.fill('visited = set()\nvisited.a');
+  await code.press('Control+End');
+  await code.press('Control+Space');
+  const setAdd = page.getByRole('option', { name: /^add\s*set$/ });
+  await expect(setAdd).toBeVisible();
+  await setAdd.click();
+  await expect(code.locator('.cm-line').last()).toHaveText('visited.add');
+
+  await code.fill('whi');
+  await code.press('End');
+  await code.press('Control+Space');
+  await expect(page.getByRole('option', { name: /^while/ })).toBeVisible();
+
+  await code.fill('heap');
+  await code.press('End');
+  await code.press('Control+Space');
+  await page.getByRole('option', { name: /^heap setup/ }).click();
+  await expect(code.locator('.cm-line').first()).toHaveText('import heapq');
+  await expect(code.locator('.cm-line').last()).toHaveText('heapq.heapify(heap)');
+});
+
 test('fullscreen variable panels follow playback and match normal Watch', async ({ page }) => {
   await offline(page);
   await page.addInitScript(() => {
