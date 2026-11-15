@@ -5,7 +5,7 @@ import { beatPosition, makeWatch, type WatchModel } from './watchModel';
 export type Value = null | string | number | boolean | { r?: string | number; f?: string; p?: string };
 export type Frame = { n: string; a: string[]; v: Record<string, Value> };
 export type Step = {
-  l: number; out: string; F: Frame[]; H: Record<string, { k: string; v: unknown[]; c?: string }>; rd?: string[];
+  l: number; out: string; F: Frame[]; H: Record<string, { k: string; v: unknown[]; c?: string; label?: string }>; rd?: string[];
   c?: string; rv?: string; done?: boolean; error?: string; handled?: string; cleanup?: boolean;
   tryElse?: boolean; exc?: { name: string; message: string };
   syntax?: { column?: number; endLine?: number; endColumn?: number };

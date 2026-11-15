@@ -109,7 +109,7 @@ export function run(src){
   const snap=()=>{const H={};
     const ref=o=>{if(o===null||typeof o!='object')return o;if(o.fn||o.cls)return{f:o.n,c:o.cls?1:0};
       let id=ids.get(o);if(!id){id=nid++;ids.set(o,id);}
-      if(!(id in H)){H[id]=null;H[id]=o instanceof Map?{k:'d',v:[...o].map(([a,b])=>[a,ref(b)])}:o instanceof Set?{k:'s',v:[...o].map(ref)}:o.o?{k:'o',c:o.c.n,v:Object.entries(o.a).map(([a,b])=>[a,ref(b)])}:{k:o._t?'t':'l',v:o.map(ref)};}
+      if(!(id in H)){H[id]=null;H[id]=o instanceof Map?{k:'d',v:[...o].map(([a,b])=>[a,ref(b)])}:o instanceof Set?{k:'s',v:[...o].map(ref)}:o.o?{k:'o',c:o.c.n,v:Object.entries(o.a).map(([a,b])=>[a,ref(b)])}:{k:o._t?'t':'l',v:o.map(ref),...(o._deque?{label:'deque'}:{})};}
       return{r:id};};
     const F=stack.map(f=>({n:f.n,a:f.a,v:Object.fromEntries(Object.entries(f.v).map(([k,v])=>[k,ref(v)]))}));return{F,H};};
   const step=l=>{if(steps.length>=4000)err(l,'Stopped after 4000 steps — possible infinite loop');const st={l,out,rd:[...reads],...snap()};if(rvv){st.rv=rep(rvv.v,1);rvv=null;}reads.clear();steps.push(st);};
@@ -182,7 +182,7 @@ export function run(src){
     ord:a=>a[0].charCodeAt(0),chr:a=>String.fromCharCode(a[0]),defaultdict:a=>{const m=new Map();m.df=a[0];return m;},
     Counter:a=>{const m=new Map();m.cz=1;if(a.length)iter(a[0]).forEach(x=>m.set(x,(m.get(x)||0)+1));return m;},
     pow:a=>a.length>2?Number(BigInt(a[0])**BigInt(a[1])%BigInt(a[2])):Math.pow(a[0],a[1]),
-    divmod:a=>Object.assign([Math.floor(a[0]/a[1]),a[0]-a[1]*Math.floor(a[0]/a[1])],{_t:1}),deque:a=>a.length?iter(a[0]).slice():[],
+    divmod:a=>Object.assign([Math.floor(a[0]/a[1]),a[0]-a[1]*Math.floor(a[0]/a[1])],{_t:1}),deque:a=>Object.assign(a.length?iter(a[0]).slice():[],{_deque:true}),
     heapq:{mod:1,heapify:a=>{const h=a[0],c=h.slice();h.length=0;c.forEach(x=>B.heapq.heappush([h,x]));return null;},heappush:a=>{const h=a[0];h.push(a[1]);let i=h.length-1;while(i>0){const p=(i-1)>>1;if(cmpv(h[i],h[p])>=0)break;[h[i],h[p]]=[h[p],h[i]];i=p;}return null;},
       heappop:a=>{const h=a[0];if(!h.length)err(0,'IndexError: pop from empty heap');const t=h[0],x=h.pop();if(h.length){h[0]=x;let i=0;for(;;){let m=i;const c=2*i+1;if(c<h.length&&cmpv(h[c],h[m])<0)m=c;if(c+1<h.length&&cmpv(h[c+1],h[m])<0)m=c+1;if(m==i)break;[h[i],h[m]]=[h[m],h[i]];i=m;}}return t;}},
     random:{mod:1,choice:(a,k,l)=>{const items=a[0];if(!items.length)err(l,'IndexError: Cannot choose from an empty sequence');return items[Math.floor(Math.random()*items.length)];}},

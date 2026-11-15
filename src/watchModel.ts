@@ -21,16 +21,17 @@ export type Beat = {
   decision?: Decision;
   topic?: TopicEvent;
   cells?: number[]; entries?: unknown[]; grid?: { read: string[]; written: string[] }; node?: Atom; edge?: [Atom, Atom];
+  queueChange?: { end: 'front' | 'back'; value: string };
   link?: { from: string; field: string; to?: string };
 };
 export type CallNode = { id: number; p?: number; k: number[]; born: number; end: number; lab: string; rv?: string };
 export type WatchModel = { scene: Scene; beats: Beat[]; currentNodes: Map<number, Atom>; sceneSteps: number[]; calls: CallNode[];
   relevance: Map<string, number>; indexNames: Map<string, Set<string>>; backtracking?: Backtracking; callPaths?: Map<number, string>; topic?: Topic };
-type Candidate = { id: string; name: string; reads: number; writes: number; pairs: number; swaps: number; size: number; flat: boolean; grid: boolean; network?: Network };
+type Candidate = { id: string; name: string; reads: number; writes: number; pairs: number; swaps: number; size: number; flat: boolean; grid: boolean; deque: boolean; network?: Network };
 type HeapItem = Step['H'][string];
 const identifier = '[\\p{ID_Start}_][\\p{ID_Continue}]*';
 const midpoint = new RegExp('^\\s*(' + identifier + ')\\s*=\\s*\\(\\s*(' + identifier + ')\\s*\\+\\s*(' + identifier + ')\\s*\\)\\s*(?://\\s*2|>>\\s*1)\\b', 'u');
-const queueRead = new RegExp('^\\s*(' + identifier + ')\\s*=\\s*(' + identifier + ')\\s*\\.\\s*(?:popleft\\(\\s*\\)|pop\\(\\s*0\\s*\\))', 'u');
+const queueOperation = new RegExp('(?:^|[^.\\p{ID_Continue}])(' + identifier + ')\\s*\\.\\s*(appendleft|append|popleft|pop(?=\\s*\\(\\s*(?:0|-1)?\\s*\\)))\\s*\\(\\s*(?:(0|-1)?\\s*\\))?', 'gu');
 const neighbors = new RegExp('^\\s*(?:async\\s+)?for\\s+' + identifier + '\\s+in\\s+(' + identifier + ')\\s*(?:\\[|\\.get\\()\\s*(' + identifier + ')', 'u');
 const swapSource = /^\s*[^=]+\]\s*,\s*[^=]+\]\s*=\s*[^=]+\]\s*,\s*[^=]+\]/;
 const compareSource = new RegExp('^\\s*(?:if|elif|while)\\s+' + identifier + '\\[[^\\]]+\\]\\s*(?:<=|>=|==|!=|<|>)\\s*' + identifier + '\\[[^\\]]+\\]\\s*:', 'u');
@@ -51,6 +52,18 @@ export const scopeValue = (step: Step, key: string): Value | undefined => {
 };
 const ref = (value: unknown) => value && typeof value === 'object' && 'r' in value ? String(value.r) : undefined;
 const sequence = (item: HeapItem | undefined): item is HeapItem => Boolean(item && 'lt'.includes(item.k) && item.v.every(isAtom));
+const listLike = (item: HeapItem | undefined): item is HeapItem => Boolean(item?.k === 'l');
+function queueTransition(before: HeapItem | undefined, after: HeapItem | undefined, method: string, argument?: string) {
+  if (!listLike(before) || !listLike(after)) return;
+  const added = method === 'append' || method === 'appendleft';
+  const front = method === 'appendleft' || method === 'popleft' || method === 'pop' && argument === '0';
+  const larger = added ? after.v : before.v;
+  const smaller = added ? before.v : after.v;
+  if (larger.length !== smaller.length + 1) return;
+  const remainder = front ? larger.slice(1) : larger.slice(0, -1);
+  if (!remainder.every((value, i) => sameValue(value, smaller[i]))) return;
+  return { added, end: front ? 'front' as const : 'back' as const, value: front ? larger[0] : larger.at(-1) };
+}
 const fields = (item: HeapItem) => item.v as [string, unknown][];
 const linkFields = new Set(['next', 'prev', 'left', 'right']);
 export function linkedNodes(step: Step, name: string | undefined, includeRandom = false) {
@@ -124,7 +137,7 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
     const match = midpoint.exec(line);
     return match ? [[match[2], match[3], match[1]] as [string, string, string]] : [];
   });
-  const queueLines = lines.map(line => queueRead.exec(line));
+  const queueLines = lines.map(line => [...line.matchAll(queueOperation)]);
   const traversalLines = lines.map(line => neighbors.exec(line));
   const graphNames = new Set(traversalLines.flatMap(match => match?.[1] ?? []));
   const traversalVotes = new Map<string, number>();
@@ -143,7 +156,7 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
         if (!id || !item) continue;
         let candidate = candidates.get(id);
         if (!candidate) {
-          candidate = { id, name, reads: 0, writes: 0, pairs: 0, swaps: 0, size: 0, flat: false, grid: false };
+          candidate = { id, name, reads: 0, writes: 0, pairs: 0, swaps: 0, size: 0, flat: false, grid: false, deque: item.label === 'deque' };
           candidates.set(id, candidate);
         }
         candidate.size = Math.max(candidate.size, item.v.length);
@@ -166,16 +179,14 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
         traversalVotes.set(id, (traversalVotes.get(id) ?? 0) + 1);
       }
     }
-    const pop = previous && queueLines[previous.l - 1];
-    if (pop) {
-      const id = ref(scopeValue(previous, pop[2]));
-      const before = id ? previous.H[id] : undefined, after = id ? step.H[id] : undefined;
-      if (sequence(before) && sequence(after) && before.v.length === after.v.length + 1 &&
-          before.v.slice(1).every((value, i) => Object.is(value, after.v[i]))) {
-        if (id) queueVotes.set(id, (queueVotes.get(id) ?? 0) + 1);
+    if (!previous) return;
+    for (const [, name, method, argument] of queueLines[previous.l - 1] ?? []) {
+      if (method !== 'popleft' && !(method === 'pop' && argument === '0')) continue;
+      const id = ref(scopeValue(previous, name));
+      if (id && queueTransition(previous.H[id], step.H[id], method, argument)) {
+        queueVotes.set(id, (queueVotes.get(id) ?? 0) + 1);
       }
     }
-    if (!previous) return;
     for (const { collection, indices } of indexedLines[previous.l - 1] ?? []) {
       const id = ref(scopeValue(previous, collection));
       if (!id || !candidates.has(id)) continue;
@@ -218,6 +229,7 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
   const choices = [...candidates.values()];
   const queueId = [...queueVotes].sort((a, b) => b[1] - a[1])[0]?.[0];
   const queue = queueId ? candidates.get(queueId) : undefined;
+  const deque = choices.filter(candidate => candidate.deque).sort(byRelevance)[0];
   const graph = choices.filter(candidate => candidate.network)
     .sort((a, b) => (traversalVotes.get(b.id) ?? 0) - (traversalVotes.get(a.id) ?? 0))[0];
   const sort = choices.filter(candidate => candidate.swaps || candidate.pairs >= 2)
@@ -256,6 +268,7 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
     : search && array ? { kind: 'search', id: array.id, name: array.name, bounds: search,
       target: lines.map(line => binaryTarget.exec(line)).find(match => match?.[1] === array.name && match[2] === search[2])?.[3] }
     : sort?.flat ? { kind: 'array', id: sort.id, name: sort.name }
+    : deque ? { kind: 'queue', id: deque.id, name: deque.name }
     : linked ? { kind: 'linked', name: linked[1].name, nodeClass: linked[0] }
     : recursive && calls.length ? { kind: 'recursion', name: 'Call tree' }
     : generic ? { kind: generic.flat ? 'array' : generic.grid ? 'grid' : 'value', id: generic.id, name: generic.name, fallback: true, shape: shape === 'points' || shape === 'iv' ? shape : undefined }
@@ -327,7 +340,8 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
       const queueBefore = ref(scopeValue(previous, scene.queue)), queueAfter = ref(scopeValue(step, scene.queue));
       const a = queueBefore ? previous.H[queueBefore] : undefined, b = queueAfter ? step.H[queueAfter] : undefined;
       if (sequence(a) && sequence(b)) {
-        if (queueLines[previous.l - 1]?.[2] === scene.queue && a.v.length === b.v.length + 1 &&
+        if (queueLines[previous.l - 1]?.some(([, name, method, argument]) => name === scene.queue &&
+            (method === 'popleft' || method === 'pop' && argument === '0')) && a.v.length === b.v.length + 1 &&
             a.v.slice(1).every((value, i) => Object.is(value, b.v[i])) && isAtom(a.v[0])) {
           current = a.v[0];
           action = { kind: 'dequeue', label: 'Take ' + String(current) + ' from the front of the queue.', node: current };
@@ -350,11 +364,22 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
       }
       if (current !== undefined) currentNodes.set(index, current);
     }
-    if (scene.kind === 'queue' && previous && sequence(before) && sequence(after)) {
-      if (queueLines[previous.l - 1] && before.v.length === after.v.length + 1 && before.v.slice(1).every((value, i) => Object.is(value, after.v[i]))) {
-        action = { kind: 'dequeue', node: before.v[0] as Atom, label: 'Remove ' + rp(previous.H, before.v[0]) + ' from the front.' };
-      } else if (after.v.length === before.v.length + 1 && before.v.every((value, i) => Object.is(value, after.v[i]))) {
-        action = { kind: 'enqueue', node: after.v.at(-1) as Atom, label: 'Add ' + rp(step.H, after.v.at(-1)) + ' to the back.' };
+    if (scene.kind === 'queue' && previous && listLike(before) && listLike(after)) {
+      for (const [, name, method, argument] of queueLines[previous.l - 1] ?? []) {
+        if (ref(scopeValue(previous, name)) !== scene.id) continue;
+        const change = queueTransition(before, after, method, argument);
+        if (!change) continue;
+        const { added, end } = change;
+        const value = rp(added ? step.H : previous.H, change.value);
+        action = {
+          kind: added ? 'enqueue' : 'dequeue',
+          label: added ? `Add ${value} to the ${end}.` : `Remove ${value} from the ${end}.`,
+          queueChange: { end, value },
+        };
+        break;
+      }
+      if (!action && !sameValue(before.v, after.v) && step.out === previous.out) {
+        action = { kind: 'write', label: `Update ${scene.name}. It now holds ${after.v.length} ${after.v.length === 1 ? 'item' : 'items'}.` };
       }
     }
     if (scene.kind === 'search' && previous && after) {

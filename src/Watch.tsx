@@ -108,8 +108,6 @@ function ArrayScene({ replay, step, beat, moving, speed, allSteps }: { replay: R
 function GraphScene({ scene, step, current, processed, beat, moving, speed, zoom }: {
   scene: Scene; step: Step; current: unknown; processed: Beat['node'][]; beat?: Beat; moving: boolean; speed: number; zoom: number;
 }) {
-  const host = useRef<HTMLDivElement>(null);
-  useCue(host, beat, moving, speed);
   const baseline = scene.network!;
   const snapshot = step.H[scene.id!];
   const graph = snapshot ? netOf(snapshot, step, 'graph') as Network | null : null;
@@ -123,7 +121,7 @@ function GraphScene({ scene, step, current, processed, beat, moving, speed, zoom
     [160 + (extras.indexOf(node) + 1) * 320 / (extras.length + 1), 186];
   const queueRef = scene.queue ? scopeValue(step, scene.queue) : undefined;
   const queue = queueRef && typeof queueRef === 'object' && queueRef.r ? step.H[String(queueRef.r)]?.v ?? [] : [];
-  return <div className="graph-scene" ref={host}>
+  return <div className="graph-scene">
     <div className="diagram-window">
       <svg className="watch-graph" viewBox="0 0 640 372" role="img" aria-label="Graph and active traversal">
         <defs>
@@ -155,20 +153,24 @@ function GraphScene({ scene, step, current, processed, beat, moving, speed, zoom
         </g>
       </svg>
     </div>
-    {scene.queue && <QueueScene queue={queue} beat={beat} />}
+    {scene.queue && <QueueScene queue={queue} beat={beat} step={step} moving={moving} speed={speed} />}
     {processed.length > 0 && <div className="watch-queue watch-processed" aria-label="Removal order">
       <span>Removal order</span><ol>{processed.slice(-20).map((value, i) => <li key={i}>{format(value)}</li>)}</ol>
     </div>}
   </div>;
 }
 
-function QueueScene({ queue, beat }: { queue: unknown[]; beat?: Beat }) {
-  return <div className="watch-queue" aria-label="Queue">
-      <span>Queue Â· front on left</span>
-      {queue.length ? <ol>{queue.map((value, i) => <li key={i} data-cue={beat?.kind === 'enqueue' && i === queue.length - 1 ? '' : undefined}>{format(value)}</li>)}</ol> :
-        <span className="queue-empty">Empty</span>}
-      {beat?.kind === 'dequeue' && <small data-cue>Dequeued {format(beat.node)}</small>}
-    </div>;
+function QueueScene({ queue, beat, step, moving, speed }: { queue: unknown[]; beat?: Beat; step: Step; moving: boolean; speed: number }) {
+  const host = useRef<HTMLElement>(null);
+  useCue(host, beat, moving, speed);
+  const active = beat?.kind === 'enqueue' ? beat.queueChange?.end === 'front' ? 0 : queue.length - 1 : -1;
+  return <section ref={host} className="watch-queue" aria-label="Queue">
+    <span>Queue (front on left)</span>
+    {queue.length ? <ol>{queue.map((value, i) => <li key={i} data-cue={i === active ? '' : undefined}>
+      {isAtom(value) ? format(value) : rp(step.H, value)}
+    </li>)}</ol> : <span className="queue-empty">Empty</span>}
+    {beat?.kind === 'dequeue' && <small data-cue>Removed {beat.queueChange?.value ?? format(beat.node)} from the {beat.queueChange?.end ?? 'front'}</small>}
+  </section>;
 }
 
 function ValueScene({ replay, scene, step, beat, moving, speed }: { replay: Replay; scene: Scene; step: Step; beat?: Beat; moving: boolean; speed: number }) {
@@ -460,7 +462,7 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
         <div className="scene-stack">
           {!replay || !scene || !sceneStep ? <p className="scene-empty">Run Python code to start playback.</p> :
             scene.kind === 'array' || scene.kind === 'search' ? <ArrayScene replay={replay} step={sceneStep} beat={beat} moving={motion} speed={speed} allSteps={allSteps} /> :
-            scene.kind === 'queue' ? <QueueScene queue={sceneStep.H[scene.id!]?.v ?? []} beat={beat} /> :
+            scene.kind === 'queue' ? <QueueScene queue={sceneStep.H[scene.id!]?.v ?? []} beat={beat} step={sceneStep} moving={motion} speed={speed} /> :
             scene.kind === 'graph' ? <GraphScene scene={scene} step={sceneStep} current={replay.watch.currentNodes.get(index)} processed={processed} beat={beat} moving={motion} speed={speed} zoom={zoom} /> :
             scene.kind === 'linked' ? <LinkedScene scene={scene} step={sceneStep} beat={beat} moving={motion} speed={speed} /> :
             model ? <div className="decision-lesson">

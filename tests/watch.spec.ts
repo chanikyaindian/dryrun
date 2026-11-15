@@ -82,6 +82,34 @@ print(built)`);
   await expect(result.locator('code')).toHaveText(['😀', 'a']);
 });
 
+test('Watch renders a deque and identifies operations at either end', async ({ page }) => {
+  await page.goto('/#write');
+  await custom(page, `from collections import deque
+queue = deque([1, 2, 3])
+print(queue.popleft())
+queue.append(4)
+queue.appendleft((0, 1))
+print(queue.pop())
+print(list(queue))`);
+  const queue = player(page).getByRole('region', { name: 'Queue', exact: true });
+  const entries = queue.getByRole('listitem');
+  await expect(queue).toContainText('front on left');
+  await expect(entries).toHaveText(['1', '2', '3']);
+
+  await next(page).click();
+  await expect(player(page).locator('.watch-caption')).toHaveText('Remove 1 from the front.');
+  await expect(entries).toHaveText(['2', '3']);
+  await next(page).click();
+  await expect(queue.locator('li[data-cue]')).toHaveText('4');
+  await expect(entries).toHaveText(['2', '3', '4']);
+  await next(page).click();
+  await expect(queue.locator('li[data-cue]')).toHaveText('(0, 1)');
+  await expect(entries).toHaveText(['(0, 1)', '2', '3', '4']);
+  await next(page).click();
+  await expect(player(page).locator('.watch-caption')).toHaveText('Remove 4 from the back.');
+  await expect(entries).toHaveText(['(0, 1)', '2', '3']);
+});
+
 test('default Watch hides debugging chrome and Inspect opens at the same line', async ({ page }) => {
   await page.context().route('https://cdn.jsdelivr.net/**', route => route.abort());
   await page.goto('/#watch');

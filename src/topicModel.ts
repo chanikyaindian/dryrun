@@ -171,7 +171,7 @@ function lifoRule(source: string): Rule | undefined {
     event(before, after, line) {
       const old = list(before, stack), next = list(after, stack);
       const oldRef = local(before, stack), nextRef = local(after, stack);
-      if (!old || !next || !oldRef || typeof oldRef !== 'object' || !nextRef || typeof nextRef !== 'object' ||
+      if (item(before, stack)?.label === 'deque' || !old || !next || !oldRef || typeof oldRef !== 'object' || !nextRef || typeof nextRef !== 'object' ||
         oldRef.r !== nextRef.r || !old.slice(0, Math.min(old.length, next.length)).every((value, i) => same(value, next[i]))) return;
       if (append.exec(line)?.[1] === stack && next.length === old.length + 1) {
         const value = display(next.at(-1));
