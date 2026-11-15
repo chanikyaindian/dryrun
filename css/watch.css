@@ -231,7 +231,7 @@
 
 .watch-canvas[data-scene="topic"] .scene-body { padding-block: 22px; }
 .watch-canvas[data-scene="topic"] .decision-tree .call-window { height: clamp(180px, 42vh, 420px); }
-.topic-panel { display: grid; gap: 12px; min-width: 0; }
+.topic-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .topic-panel h3 { margin: 0 0 8px; font-size: 14px; font-weight: 680; }
 .topic-panel h3 .window-range { display: inline-block; background: var(--accent-soft); color: var(--accent); margin-inline-start: 8px; padding: 2px 6px; border-radius: 4px; }
 .topic-facts { display: flex; flex-wrap: wrap; margin: 0; gap: 9px 20px; }
