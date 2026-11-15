@@ -1,5 +1,6 @@
 import { eh, RM } from '../core.js';
 import { rep } from '../engine/js-engine.js';
+import { barLayout, followArrayFocus } from './array-layout.js';
 
 let kc = 0, duration = 336;
 const GK = new Map();
@@ -31,47 +32,71 @@ function keysFor(prev,pk,arr){const used=new Set(),res=new Array(arr.length);
     for(let q=0;q<prev.length;q++){if(used.has(pk[q])||prev[q]!==v)continue;if(b<0||Math.abs(q-i)<Math.abs(b-i))b=q;}
     if(b>=0){res[i]=pk[b];used.add(pk[b]);}else res[i]='n'+(++kc);});return res;}
 function drawList(el,name,h,ptrs,id,s,cue = undefined){
-  const a=h.v,n=a.length,W=Math.max(26,Math.min(56,Math.floor((el.clientWidth||600)/Math.max(n,1))-2));
-  if(!el._row){el.innerHTML='<div class="hd"></div><div class="row"></div>';el._row=el.lastChild;el._c=new Map();el._p=new Map();el._k=[];el._a=[];el._ix=[];el._seen=0;el._sig=null;}
+  const a=h.v,n=a.length,W=54;
+  if(!el._row){el.innerHTML='<div class="hd"></div><div class="array-scroll inspect-array-scroll"><div class="row"><div class="array-window" hidden></div></div></div>';el._row=el.lastChild.firstChild;el._c=new Map();el._p=new Map();el._k=[];el._a=[];el._ix=[];el._seen=0;el._sig=null;}
   const row=el._row,first=!el._seen;el._seen=1;
+  const scrollport=row.parentElement;
   const primary = name.split(', ')[0];
   const label = /^s:/.test(id) ? 'string' : /stack|^stk$/.test(primary) ? 'stack' :
     /queue|deque|^dq$/.test(primary) ? 'queue' : h.label || (h.k === 't' ? 'tuple' : 'array');
-  el.firstChild.textContent=`${name}, ${label}[${n}]`;
+  scrollport.setAttribute('aria-label', name + ' values');
+  scrollport.setAttribute('role', 'region');
   const num=n>0&&a.every(x=>typeof x=='number'&&isFinite(x));
   const [mn,mx]=num?(cue?.barDomain??[Math.min(0,...a),Math.max(0,...a)]):[0,1];
-  const scale=Math.max(Math.abs(mn),Math.abs(mx),1),span=(mx/scale-mn/scale)||1;
-  const zero=18+84*(mx/scale)/span;
-  const hh=v=>num?Math.max(18,Math.round(84*Math.abs(v/scale)/span)):40;
+  const { zero, height }=barLayout(mn,mx);
   const keys=keysFor(el._a,el._k,a),ks=new Set(keys),pi=new Set(ptrs.map(x=>x[1]));
   const pm=Object.fromEntries(ptrs);let dim=null,win=null;
   for(const [p1,p2] of [['lo','hi'],['low','high'],['l','r'],['left','right'],['start','end']])if(p1 in pm&&p2 in pm&&pm[p1]<=pm[p2]&&pm[p2]<n){const g=[pm[p1],pm[p2]];if('mid' in pm||p1=='lo'||p1=='low')dim=g;else win=g;break;}
   row.style.width=n*W+'px';
   row.toggleAttribute('data-bars',num);
-  row.style.setProperty('--plot-zero',zero+'px');
+  row.style.setProperty('--plot-zero',zero/100);
   if(cue?.window)win=cue.window;
   if(cue?.outside)dim=cue.outside;
+  const windowBand=row.firstChild;
+  const windowStart=Math.max(0,win?.[0]??0),windowEnd=Math.min(n-1,win?.[1]??-1);
+  windowBand.hidden=windowStart>windowEnd;
+  el.firstChild.textContent=`${name} · ${label}[${n}]`;
+  if(win){
+    const rangeLabel=document.createElement('span');
+    rangeLabel.className='window-range';
+    rangeLabel.textContent=windowBand.hidden?'Empty window':`Window ${windowStart}–${windowEnd}`;
+    el.firstChild.append(rangeLabel);
+  }
+  if(!windowBand.hidden){
+    windowBand.style.left=windowStart*W+'px';
+    windowBand.style.width=(windowEnd-windowStart+1)*W+'px';
+  }
   while(el._ix.length<n){const d=document.createElement('div');d.className='ix';row.appendChild(d);el._ix.push(d);}
   while(el._ix.length>n)el._ix.pop().remove();
-  el._ix.forEach((d,i)=>{d.textContent=i;d.style.width=W+'px';d.style.transform=`translateX(${i*W}px)`;});
+  el._ix.forEach((d,i)=>{d.textContent=i;d.style.width=W+'px';d.style.left=i*W+'px';});
   el._c.forEach((d,k)=>{if(!ks.has(k)){d.classList.add('out');setTimeout(()=>d.remove(),450);el._c.delete(k);}});
   const pIdx=new Map(el._k.map((k,i)=>[k,i])),pVal=new Map(el._k.map((k,i)=>[k,el._a[i]]));
-  keys.forEach((k,i)=>{let d=el._c.get(k);const fresh=!d,y=num?(a[i]<0?zero:zero-hh(a[i])):80;
-    if(fresh){d=document.createElement('div');d.appendChild(document.createElement('code'));d.className='cell in';row.appendChild(d);el._c.set(k,d);d.style.transform=`translate(${i*W}px,${y}px)`;requestAnimationFrame(()=>requestAnimationFrame(()=>d.classList.remove('in')));}
-    d.style.width=W-4+'px';d.style.height=hh(a[i])+'px';d.style.transform=`translate(${i*W}px,${y}px)`;d.firstChild.textContent=a[i] && typeof a[i] === 'object' ? rp(s.H,a[i]) : rep(a[i]);
+  keys.forEach((k,i)=>{let d=el._c.get(k);const fresh=!d;
+    if(fresh){d=document.createElement('div');d.innerHTML='<span class="inspect-bar-plot" aria-hidden="true"><i></i></span><code></code>';d.className='cell in';row.appendChild(d);el._c.set(k,d);d.style.transform=`translateX(${i*W}px)`;requestAnimationFrame(()=>requestAnimationFrame(()=>d.classList.remove('in')));}
+    d.style.width=W+'px';d.style.transform=`translateX(${i*W}px)`;d.lastChild.textContent=a[i] && typeof a[i] === 'object' ? rp(s.H,a[i]) : rep(a[i]);
+    if(num){
+      const magnitude=height(a[i]);
+      d.style.setProperty('--bar-y',(a[i]<0?zero:zero-magnitude)+'%');
+      d.style.setProperty('--bar-height',magnitude+'%');
+    }
     d.title=d.textContent;
     const inWindow=!!win&&i>=win[0]&&i<=win[1];
     d.classList.toggle('on',pi.has(i)||Boolean(cue?.active?.includes(i)));d.classList.toggle('rd',!!s?.rd?.includes(id+':'+i)||Boolean(cue?.related?.includes(i)));d.classList.toggle('dim',!!dim&&(i<dim[0]||i>dim[1]));d.classList.toggle('win',inWindow);
     if(inWindow)d.dataset.inWindow='true';else delete d.dataset.inWindow;
     if(!first&&(fresh||pIdx.get(k)!==i||pVal.get(k)!==a[i])){d.classList.remove('chg');void d.offsetWidth;d.classList.add('chg');}});
   el._k=keys;el._a=a.slice();
-  const by=new Map(),alive=new Set();let mxr=1;
+  const by=new Map(),alive=new Set();let mxr=win?2:0;
   ptrs.forEach(([k,v])=>{if(v<n){if(!by.has(v))by.set(v,[]);by.get(v).push(k);}});
-  by.forEach((ns,idx)=>{mxr=Math.max(mxr,ns.length);ns.forEach((nm,r)=>{alive.add(nm);let p=el._p.get(nm);const tr=`translate(${idx*W}px,${142+r*18}px)`;
-    if(!p){p=document.createElement('div');p.className='pt';p.textContent='▲ '+nm;row.appendChild(p);el._p.set(nm,p);p.style.transform=tr;void p.offsetWidth;}
+  by.forEach((ns,idx)=>{mxr=Math.max(mxr,ns.length);ns.forEach((nm,r)=>{alive.add(nm);let p=el._p.get(nm);const tr=`translate(${idx*W}px,${r*15}px)`;
+    if(!p){p=document.createElement('div');p.className='pt';p.textContent=nm;p.title=nm;row.appendChild(p);el._p.set(nm,p);p.style.transform=tr;void p.offsetWidth;}
     p.style.width=W+'px';p.style.transform=tr;});});
   el._p.forEach((p,nm)=>{if(!alive.has(nm)){p.remove();el._p.delete(nm);}});
-  row.style.height=(146+mxr*18)+'px';}
+  row.style.setProperty('--pointer-height',mxr*15+'px');
+  const read=a.findIndex((_,i)=>s?.rd?.includes(id+':'+i));
+  const active=cue?.active?.at(-1)??(read>=0?read:ptrs.at(-1)?.[1]);
+  scrollport.tabIndex=scrollport.scrollWidth>scrollport.clientWidth?0:-1;
+  followArrayFocus(scrollport,windowBand.hidden?undefined:el._ix[windowStart],windowBand.hidden?undefined:el._ix[windowEnd],el._ix[active]);
+}
 function drawCard(el,name,s,h,pv,id){el._row=null;el._sig=null;
   const mk=(h,H)=>h.k=='d'||h.k=='o'?h.v.map(([a,b])=>(h.k=='d'?rep(a,1):a)+' → '+rp(H,b)):h.k=='s'?[h.v.map(x=>rp(H,x)).join('   ')||'∅']:h.v.map((x,i)=>i+': '+rp(H,x));
   const L=mk(h,s.H),ph=pv&&pv.H[id],PL=ph?mk(ph,pv.H):null;

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { display, type TopicEvent, type TopicView } from './topicModel';
+import { barLayout, followArrayFocus } from '../js/views/array-layout.js';
 
 function HeapTree({ values, active }: { values: NonNullable<TopicView['heap']>; active?: number[] }) {
   const shown = values.slice(0, 31);
@@ -99,13 +100,22 @@ export function TopicPanel({ view, cue, motion = false, speed = 560, showKey = f
     const positions = new Map<string, { x: number; y: number }>();
     const animations: Animation[] = [];
     const moving = motion && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const scrolled = new Set<HTMLElement>();
+    for (const scrollport of panel.querySelectorAll<HTMLElement>('.array-scroll')) {
+      const windowCells = scrollport.querySelectorAll<HTMLElement>('[data-in-window]');
+      const focus = scrollport.querySelector<HTMLElement>('[data-focus]') ?? undefined;
+      scrollport.tabIndex = scrollport.scrollWidth > scrollport.clientWidth ? 0 : -1;
+      if (followArrayFocus(scrollport, windowCells[0], windowCells[windowCells.length - 1], focus)) scrolled.add(scrollport);
+    }
     for (const marker of panel.querySelectorAll<HTMLElement>('[data-topic-pointer]')) {
       const key = marker.dataset.topicPointer!;
       const rect = marker.getBoundingClientRect();
-      const position = { x: rect.left - bounds.left, y: rect.top - bounds.top };
+      const scrollport = marker.closest<HTMLElement>('.array-scroll');
+      const origin = scrollport?.firstElementChild?.getBoundingClientRect() ?? bounds;
+      const position = { x: rect.left - origin.left, y: rect.top - origin.top };
       const previous = pointerPositions.current.get(key);
       positions.set(key, position);
-      if (!moving || !previous || (previous.x === position.x && previous.y === position.y)) continue;
+      if (!moving || !previous || (scrollport && scrolled.has(scrollport)) || (previous.x === position.x && previous.y === position.y)) continue;
       animations.push(marker.animate([
         { transform: `translate(${previous.x - position.x}px, ${previous.y - position.y}px)` },
         { transform: 'translate(0, 0)' },
@@ -139,41 +149,47 @@ export function TopicPanel({ view, cue, motion = false, speed = 560, showKey = f
     </div>}
     {view.rows?.map(row => {
       const limit = 36;
-      const focus = row.active?.at(-1) ?? row.pointers?.at(-1)?.index ?? row.related?.at(-1) ?? 0;
-      const start = Math.min(Math.max(0, row.values.length - limit), Math.max(0, focus - 12));
-      const visible = row.values.slice(start, start + limit);
+      const focus = row.active?.at(-1) ?? row.pointers?.at(-1)?.index ?? row.related?.at(-1);
       const numeric = row.decimal === undefined && !row.characters && row.values.length > 0 &&
         row.values.every(value => typeof value === 'number' && Number.isFinite(value));
-      const values = view.barDomain ?? row.values;
-      const scale = numeric ? Math.max(1, ...values.map(value => Math.abs(Number(value)))) : 1;
-      const low = numeric ? Math.min(0, ...values.map(value => Number(value) / scale)) : 0;
-      const high = numeric ? Math.max(0, ...values.map(value => Number(value) / scale)) : 1;
-      return <section className="topic-row" key={row.name} aria-label={row.name} data-bits={row.decimal !== undefined || undefined}
-        data-pointers={row.pointers ? '' : undefined} data-characters={row.characters || undefined} data-window={row.window ? '' : undefined}
-        data-bars={numeric || undefined}>
-      <h3>{row.name}{row.decimal !== undefined && <small> · {row.decimal}</small>}
-        {row.window && <small> · {row.window[0] <= row.window[1] ? `Window ${row.window[0]}–${row.window[1]}` : 'Empty window'}</small>}</h3>
-      {visible.length ? <ol className="topic-cells">{visible.map((value, position) => {
+      const linear = numeric || Boolean(row.window);
+      const start = linear ? 0 : Math.min(Math.max(0, row.values.length - limit), Math.max(0, (focus ?? 0) - 12));
+      const visible = linear ? row.values : row.values.slice(start, start + limit);
+      const [low, high] = numeric ? view.barDomain ?? [Math.min(0, ...row.values.map(Number)), Math.max(0, ...row.values.map(Number))] : [0, 1];
+      const { zero, height } = barLayout(low, high);
+      const windowStart = Math.max(0, row.window?.[0] ?? 0);
+      const windowEnd = Math.min(row.values.length - 1, row.window?.[1] ?? -1);
+      const cells = <ol className="topic-cells" style={{ '--plot-zero': zero / 100, '--window-start': windowStart,
+        '--window-size': Math.max(0, windowEnd - windowStart + 1) } as CSSProperties}>{visible.map((value, position) => {
         const i = start + position;
         const active = row.active?.includes(i), related = !active && row.related?.includes(i);
         const pointers = row.pointers?.filter(pointer => pointer.index === i);
+        const magnitude = numeric ? height(Number(value)) : 0;
         return <li key={i} data-active={active} data-related={related} data-topic-cue={active || undefined}
+          data-changed={cue?.changed?.[row.name]?.includes(i) || undefined}
+          data-focus={i === focus || undefined}
           data-pointed={Boolean(pointers?.length) || undefined}
-          data-in-window={Boolean(row.window && i >= row.window[0] && i <= row.window[1]) || undefined}
+          data-in-window={i >= windowStart && i <= windowEnd || undefined}
           data-outside={Boolean(row.outside && (i < row.outside[0] || i > row.outside[1]))}>
           {numeric && <span className="topic-bar-plot" aria-hidden="true">
             <i style={{
-              '--bar-y': (high - Math.max(0, Number(value) / scale)) / (high - low || 1) * 100 + '%',
-              '--bar-height': Math.max(3, Math.abs(Number(value) / scale) / (high - low || 1) * 100) + '%',
+              '--bar-y': (Number(value) < 0 ? zero : zero - magnitude) + '%',
+              '--bar-height': magnitude + '%',
             } as CSSProperties} />
           </span>}
-          <code>{row.characters && value === ' ' ? <span aria-label="Space">␠</span> : display(value)}</code>{row.index && <small>{i}</small>}
+          <code title={display(value)}>{row.characters && value === ' ' ? <span aria-label="Space">␠</span> : display(value)}</code>{row.index && <small>{i}</small>}
           {pointers && <span className="topic-pointer-lane">{pointers.map(({ name }) =>
             <span className="topic-pointer" key={name} data-topic-pointer={row.name + ':' + name} title={name}>{name}</span>)}</span>}
         </li>;
-      })}</ol> : <p className="topic-empty">Empty</p>}
-      {row.values.length > limit && <small>Showing entries {start + 1}–{start + visible.length} of {row.values.length}.</small>}
-    </section>;
+      })}</ol>;
+      return <section className="topic-row" key={row.name} aria-label={row.name} data-bits={row.decimal !== undefined || undefined}
+        data-pointers={row.pointers ? '' : undefined} data-characters={row.characters || undefined} data-window={row.window ? '' : undefined}
+        data-linear={linear || undefined} data-bars={numeric || undefined}>
+        <h3>{row.name}{row.decimal !== undefined && <small> · {row.decimal}</small>}
+          {row.window && <small className="window-range">{windowStart <= windowEnd ? `Window ${windowStart}–${windowEnd}` : 'Empty window'}</small>}</h3>
+        {visible.length ? linear ? <div className="array-scroll" role="region" aria-label={row.name + ' values'}>{cells}</div> : cells : <p className="topic-empty">Empty</p>}
+        {!linear && row.values.length > limit && <small>Showing entries {start + 1}–{start + visible.length} of {row.values.length}.</small>}
+      </section>;
     })}
     {facts.length > 0 && <dl className="topic-facts">{facts.map(([label, value]) =>
       <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}

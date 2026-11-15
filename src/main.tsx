@@ -453,7 +453,7 @@ function App() {
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
       if ((!watching && !inspecting) || pending || event.defaultPrevented || replacement !== null || event.target instanceof Element &&
-        event.target.closest('input,textarea,select,button,summary,[contenteditable],[role="separator"],[role="tablist"]')) return;
+        event.target.closest('input,textarea,select,button,summary,[contenteditable],[role="separator"],[role="tablist"],.array-scroll')) return;
       if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) runCurrent();
       else if (event.key === 'ArrowRight') dispatch(watching ? { type: 'beat', direction: 1, allSteps: allWatchSteps } : { type: 'step', index: 1 });
       else if (event.key === 'ArrowLeft') dispatch(watching ? { type: 'beat', direction: -1, allSteps: allWatchSteps } : { type: 'step', index: -1 });
