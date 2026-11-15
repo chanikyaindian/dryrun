@@ -30,7 +30,7 @@ function keysFor(prev,pk,arr){const used=new Set(),res=new Array(arr.length);
   arr.forEach((v,i)=>{if(res[i]!==undefined)return;let b=-1;
     for(let q=0;q<prev.length;q++){if(used.has(pk[q])||prev[q]!==v)continue;if(b<0||Math.abs(q-i)<Math.abs(b-i))b=q;}
     if(b>=0){res[i]=pk[b];used.add(pk[b]);}else res[i]='n'+(++kc);});return res;}
-function drawList(el,name,h,ptrs,id,s){
+function drawList(el,name,h,ptrs,id,s,cue = undefined){
   const a=h.v,n=a.length,W=Math.max(26,Math.min(56,Math.floor((el.clientWidth||600)/Math.max(n,1))-2));
   if(!el._row){el.innerHTML='<div class="hd"></div><div class="row"></div>';el._row=el.lastChild;el._c=new Map();el._p=new Map();el._k=[];el._a=[];el._ix=[];el._seen=0;el._sig=null;}
   const row=el._row,first=!el._seen;el._seen=1;
@@ -38,22 +38,31 @@ function drawList(el,name,h,ptrs,id,s){
   const label = /^s:/.test(id) ? 'string' : /stack|^stk$/.test(primary) ? 'stack' :
     /queue|deque|^dq$/.test(primary) ? 'queue' : h.label || (h.k === 't' ? 'tuple' : 'array');
   el.firstChild.textContent=`${name}, ${label}[${n}]`;
-  const num=n>0&&a.every(x=>typeof x=='number'&&isFinite(x)),mn=num?Math.min(...a,0):0,mx=num?Math.max(...a,1):1;
-  const hh=v=>num?Math.round(28+(v-mn)/((mx-mn)||1)*82):40;
+  const num=n>0&&a.every(x=>typeof x=='number'&&isFinite(x));
+  const [mn,mx]=num?(cue?.barDomain??[Math.min(0,...a),Math.max(0,...a)]):[0,1];
+  const scale=Math.max(Math.abs(mn),Math.abs(mx),1),span=(mx/scale-mn/scale)||1;
+  const zero=18+84*(mx/scale)/span;
+  const hh=v=>num?Math.max(18,Math.round(84*Math.abs(v/scale)/span)):40;
   const keys=keysFor(el._a,el._k,a),ks=new Set(keys),pi=new Set(ptrs.map(x=>x[1]));
   const pm=Object.fromEntries(ptrs);let dim=null,win=null;
   for(const [p1,p2] of [['lo','hi'],['low','high'],['l','r'],['left','right'],['start','end']])if(p1 in pm&&p2 in pm&&pm[p1]<=pm[p2]&&pm[p2]<n){const g=[pm[p1],pm[p2]];if('mid' in pm||p1=='lo'||p1=='low')dim=g;else win=g;break;}
   row.style.width=n*W+'px';
+  row.toggleAttribute('data-bars',num);
+  row.style.setProperty('--plot-zero',zero+'px');
+  if(cue?.window)win=cue.window;
+  if(cue?.outside)dim=cue.outside;
   while(el._ix.length<n){const d=document.createElement('div');d.className='ix';row.appendChild(d);el._ix.push(d);}
   while(el._ix.length>n)el._ix.pop().remove();
   el._ix.forEach((d,i)=>{d.textContent=i;d.style.width=W+'px';d.style.transform=`translateX(${i*W}px)`;});
   el._c.forEach((d,k)=>{if(!ks.has(k)){d.classList.add('out');setTimeout(()=>d.remove(),450);el._c.delete(k);}});
   const pIdx=new Map(el._k.map((k,i)=>[k,i])),pVal=new Map(el._k.map((k,i)=>[k,el._a[i]]));
-  keys.forEach((k,i)=>{let d=el._c.get(k);const fresh=!d,y=120-hh(a[i]);
-    if(fresh){d=document.createElement('div');d.className='cell in';row.appendChild(d);el._c.set(k,d);d.style.transform=`translate(${i*W}px,${y}px)`;requestAnimationFrame(()=>requestAnimationFrame(()=>d.classList.remove('in')));}
-    d.style.width=W-4+'px';d.style.height=hh(a[i])+'px';d.style.transform=`translate(${i*W}px,${y}px)`;d.textContent=a[i] && typeof a[i] === 'object' ? rp(s.H,a[i]) : rep(a[i]);
+  keys.forEach((k,i)=>{let d=el._c.get(k);const fresh=!d,y=num?(a[i]<0?zero:zero-hh(a[i])):80;
+    if(fresh){d=document.createElement('div');d.appendChild(document.createElement('code'));d.className='cell in';row.appendChild(d);el._c.set(k,d);d.style.transform=`translate(${i*W}px,${y}px)`;requestAnimationFrame(()=>requestAnimationFrame(()=>d.classList.remove('in')));}
+    d.style.width=W-4+'px';d.style.height=hh(a[i])+'px';d.style.transform=`translate(${i*W}px,${y}px)`;d.firstChild.textContent=a[i] && typeof a[i] === 'object' ? rp(s.H,a[i]) : rep(a[i]);
     d.title=d.textContent;
-    d.classList.toggle('on',pi.has(i));d.classList.toggle('rd',!!(s&&s.rd&&s.rd.includes(id+':'+i)));d.classList.toggle('dim',!!dim&&(i<dim[0]||i>dim[1]));d.classList.toggle('win',!!win&&i>=win[0]&&i<=win[1]);
+    const inWindow=!!win&&i>=win[0]&&i<=win[1];
+    d.classList.toggle('on',pi.has(i)||Boolean(cue?.active?.includes(i)));d.classList.toggle('rd',!!s?.rd?.includes(id+':'+i)||Boolean(cue?.related?.includes(i)));d.classList.toggle('dim',!!dim&&(i<dim[0]||i>dim[1]));d.classList.toggle('win',inWindow);
+    if(inWindow)d.dataset.inWindow='true';else delete d.dataset.inWindow;
     if(!first&&(fresh||pIdx.get(k)!==i||pVal.get(k)!==a[i])){d.classList.remove('chg');void d.offsetWidth;d.classList.add('chg');}});
   el._k=keys;el._a=a.slice();
   const by=new Map(),alive=new Set();let mxr=1;

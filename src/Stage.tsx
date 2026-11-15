@@ -5,15 +5,19 @@ import { createStageControls } from '../js/views/interactions.js';
 import type { Preferences, Replay } from './workspace';
 import { DecisionState } from './DecisionState';
 import { TopicPanel } from './TopicPanel';
+import { scopeValue } from './watchModel';
+import type { TopicView } from './topicModel';
 
-type Props = { replay: Replay | null; index: number; views: Preferences['views']; focus: string; speed: number; motion: boolean; visible: boolean; onInteract: () => void; desktop: boolean };
+type Props = { replay: Replay | null; index: number; views: Preferences['views']; focus: string; speed: number; motion: boolean; visible: boolean; onInteract: () => void; desktop: boolean; pinned: ReadonlyMap<string, string> };
+type ArrayCue = NonNullable<TopicView['rows']>[number] & { barDomain?: TopicView['barDomain'] };
 
-export const Stage = memo(function Stage({ replay, index, views, focus, speed, motion, visible, onInteract, desktop }: Props) {
+export const Stage = memo(function Stage({ replay, index, views, focus, speed, motion, visible, onInteract, desktop, pinned }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const controls = useRef<ReturnType<typeof createStageControls> | null>(null);
   const run = useRef<number | undefined>(undefined);
   const lastViewed = useRef<Replay['steps'][number] | undefined>(undefined);
   const lastFocus = useRef('');
+  const lastPins = useRef(pinned);
   const [notice, announce] = useState('');
   const [supportingRun, setSupportingRun] = useState<number>();
   const [supportCount, setSupportCount] = useState(0);
@@ -33,7 +37,25 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
   const step = replay?.steps[index], previous = replay?.steps[index - 1];
   const cue = useMemo(() => topic?.events.get(index) ?? (step && previous ? topic?.traceCue?.(step, previous) : undefined), [topic, index, step, previous]);
   const view = useMemo(() => step && topic?.view(step, cue), [step, topic, cue]);
-  const topicVisible = Boolean(view && (view.grid ? views.grid : view.heap ? views.heap : view.trie ? views.nodes : view.ranges ? views.iv : replay?.source.lessonBits ? views.bits :
+  const nativeArrays = useMemo(() => {
+    const rows = new Map<string, ArrayCue>();
+    if (!step || !topic || !view?.rows || view.grid || view.heap || view.trie || view.ranges || replay?.source.lessonBits) return rows;
+    for (const name of topic.variables) {
+      const value = scopeValue(step, name);
+      if (!value || typeof value !== 'object' || value.r === undefined) continue;
+      const id = String(value.r), heap = step.H[id];
+      if (!heap || !['l', 't'].includes(heap.k)) continue;
+      const row = view.rows.find(row => row.name === name) ?? view.rows.find(row =>
+        row.values.length === heap.v.length && row.values.every((value, i) => Object.is(value, heap.v[i])));
+      if (row && row.decimal === undefined && !row.characters &&
+          (row.values.every(value => typeof value === 'number' && Number.isFinite(value)) || row.window || row.pointers)) {
+        rows.set(id, { ...row, barDomain: view.barDomain });
+      }
+    }
+    return rows;
+  }, [replay, step, topic, view]);
+  const plainArrays = nativeArrays.size > 0 || topic?.name === 'Sliding window' || topic?.name === 'Merge sort';
+  const topicVisible = Boolean(view && !plainArrays && (view.grid ? views.grid : view.heap ? views.heap : view.trie ? views.nodes : view.ranges ? views.iv : replay?.source.lessonBits ? views.bits :
     views.list && (view.rows?.length || view.facts?.length)));
   const hideDuplicateTree = topicVisible && Boolean(view?.trie);
   const shownGrid = topicVisible ? view?.grid?.reference : undefined;
@@ -54,6 +76,7 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
       controls.current?.reset();
       lastViewed.current = undefined;
       lastFocus.current = '';
+      lastPins.current = pinned;
       run.current = replay?.id;
     }
     const current = replay?.steps[index];
@@ -63,13 +86,20 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
     const step = { ...current, H: { ...current.H } };
     const count = drawStage(target, step, step.F.at(-1), index, replay.steps[index - 1], lastViewed.current, {
       views: hideDuplicateTree ? { ...views, nodes: false } : views,
-      focus, speed, tree: replay.tree, roles: replay.roles, topics: replay.topics,
+      focus, speed, tree: replay.tree, roles: replay.roles, topics: replay.topics, nativeArrays, pinned,
       relevance: replay.watch.relevance, indexNames: replay.watch.indexNames, scene: replay.watch.scene, withSummary, showSupporting,
       omitNames: showDecision && model ? [model.names.path, ...model.names.input, ...model.names.results] : topicVisible ? topic?.variables : undefined,
       omitReference: shownGrid,
     });
     setSupportCount(count);
     controls.current?.refresh();
+    for (const id of pinned.keys()) {
+      if (!lastPins.current.has(id)) {
+        controls.current?.restore(id, false);
+        if (step.H[id]?.k === 'o') controls.current?.restore('nodes', false);
+      }
+    }
+    lastPins.current = pinned;
     lastViewed.current = step;
     if (focus && lastFocus.current !== focus) {
       const card = [...target.querySelectorAll<HTMLElement>('.focused-card, .decision-state [data-focused="true"]')]
@@ -77,7 +107,7 @@ export const Stage = memo(function Stage({ replay, index, views, focus, speed, m
       if (card) target.scrollTop += card.getBoundingClientRect().top - target.getBoundingClientRect().top - 12;
     }
     lastFocus.current = focus;
-  }, [replay, index, views, focus, speed, visible, model, showDecision, topic, topicVisible, withSummary, showSupporting, hideDuplicateTree, shownGrid, summary]);
+  }, [replay, index, views, focus, speed, visible, model, showDecision, topic, topicVisible, withSummary, showSupporting, hideDuplicateTree, shownGrid, summary, nativeArrays, pinned]);
 
   return <>
     <div className="stage-content">

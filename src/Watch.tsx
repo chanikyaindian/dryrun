@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { ChevronLeft, ChevronRight, CodeXml, ListTree, Maximize, Minimize, Minus, Pause, Play, Plus, RotateCcw, Settings2, Variable } from 'lucide-react';
 import { rp } from '../js/views/basic.js';
 import { kind, netOf, pointLayout } from '../js/views/structures.js';
-import { beatPosition, isAtom, linkedNodes, matrixRows, readIndices, scopeValue, searchState, type Beat, type Network, type Scene } from './watchModel';
+import { arrayPointers, beatPosition, isAtom, linkedNodes, matrixRows, readIndices, scopeValue, searchState, type Beat, type Network, type Scene } from './watchModel';
 import type { Replay, Step } from './workspace';
 import { Prediction } from './Prediction';
 import { DecisionState } from './DecisionState';
@@ -30,12 +30,13 @@ function useCue(host: React.RefObject<HTMLElement | null>, beat: Beat | undefine
   }, [host, beat, moving, speed]);
 }
 
-function ArrayScene({ replay, step, beat, moving, speed, allSteps }: { replay: Replay; step: Step; beat?: Beat; moving: boolean; speed: number; allSteps: boolean }) {
-  const { scene } = replay.watch;
+function ArrayScene({ replay, step, beat, moving, speed, scene = replay.watch.scene }: { replay: Replay; step: Step; beat?: Beat; moving: boolean; speed: number; scene?: Scene }) {
   const values = step.H[scene.id!]?.v ?? [];
   const slots = useRef<HTMLDivElement>(null);
+  const pointerPositions = useRef(new Map<string, number>());
   const [lo, hi, pivot] = searchState(step, scene);
-  const reads = allSteps && scene.id ? readIndices(step, scene.id) : [];
+  const reads = scene.id ? readIndices(step, scene.id) : [];
+  const pointers = scene.kind === 'search' ? [] : arrayPointers(step, replay.watch.indexNames.get(scene.id!), values.length);
   const target = scene.target ? scopeValue(step, scene.target) : undefined;
   const [min, max] = useMemo(() => {
     let min = 0, max = 1;
@@ -48,7 +49,24 @@ function ArrayScene({ replay, step, beat, moving, speed, allSteps }: { replay: R
     }
     return [min, max];
   }, [replay, scene.id]);
-  const bars = scene.kind === 'array' && values.length > 0 && values.every(value => typeof value === 'number' && Number.isFinite(value));
+  const bars = values.length > 0 && values.every(value => typeof value === 'number' && Number.isFinite(value));
+  useLayoutEffect(() => {
+    const host = slots.current;
+    const positions = new Map<string, number>();
+    const animations: Animation[] = [];
+    for (const marker of host?.querySelectorAll<HTMLElement>('[data-array-pointer]') ?? []) {
+      const name = marker.dataset.arrayPointer!;
+      const x = marker.getBoundingClientRect().left - host!.getBoundingClientRect().left;
+      const previous = pointerPositions.current.get(name);
+      positions.set(name, x);
+      if (moving && previous !== undefined && previous !== x) {
+        const animation = animate(marker, [{ transform: `translateX(${previous - x}px)` }, { transform: 'translateX(0)' }], speed);
+        if (animation) animations.push(animation);
+      }
+    }
+    pointerPositions.current = positions;
+    return () => animations.forEach(animation => animation.cancel());
+  }, [scene.id, step, moving, speed]);
   useLayoutEffect(() => {
     if (!moving || !beat?.cells || !slots.current) return;
     const elements = beat.cells.map(i => slots.current?.querySelector<HTMLElement>('[data-slot="' + i + '"] .array-glyph'));
@@ -87,7 +105,8 @@ function ArrayScene({ replay, step, beat, moving, speed, allSteps }: { replay: R
         const active = Boolean(beat?.cells?.includes(index));
         const outside = range && (index < range[0] || index > range[1]);
         const probe = scene.kind === 'search' && pivot === index && !outside;
-        const roles = [range?.[0] === index ? 'low' : '', probe ? 'mid' : '', range?.[1] === index ? 'high' : ''].filter(Boolean);
+        const roles = [range?.[0] === index ? scene.bounds?.[0] : '', probe ? scene.bounds?.[2] : '', range?.[1] === index ? scene.bounds?.[1] : '',
+          ...pointers.filter(pointer => pointer.index === index).map(pointer => pointer.name)].filter(Boolean);
         const glyph = bars ? {
           height: Math.abs(Number(value) * scale) / scaledSpan * 84 + '%',
           ...(Number(value) < 0 ? { top: zero + '%' } : { bottom: (100 - zero) + '%' }),
@@ -98,7 +117,7 @@ function ArrayScene({ replay, step, beat, moving, speed, allSteps }: { replay: R
             <span title={format(value)}>{isAtom(value) ? format(value) : rp(step.H, value)}</span>
           </div></div>
           <span className="array-index">{index}</span>
-          <span className="array-role">{roles.join(' Â· ')}</span>
+          <span className="array-role">{[...new Set(roles)].map(name => <span key={name} data-array-pointer={name} title={name}>{name}</span>)}</span>
         </div>;
       })}
     </div>
@@ -225,7 +244,16 @@ function LinkedScene({ scene, step, beat, moving, speed, pointers, changes }: {
 }) {
   const host = useRef<HTMLDivElement>(null);
   useCue(host, beat, moving, speed);
-  const nodes = linkedNodes(step, scene.nodeClass, Boolean(pointers));
+  const matching = linkedNodes(step, scene.nodeClass, Boolean(pointers));
+  let nodes = matching;
+  if (scene.id) {
+    const byId = new Map(matching.map(node => [node.id, node]));
+    const connected = new Set([scene.id]);
+    for (const id of connected) {
+      for (const link of byId.get(id)?.links ?? []) connected.add(link.to);
+    }
+    nodes = matching.filter(node => connected.has(node.id));
+  }
   const focus = nodes.findIndex(node => node.id === beat?.link?.from || changes?.[node.id]);
   const first = Math.max(0, focus - 8);
   const shown = nodes.slice(first, first + 18);
@@ -322,12 +350,13 @@ type Props = {
   onInspect: (output?: boolean) => void;
   showTree: boolean; showStack: boolean; desktop: boolean;
   showVariables: boolean;
+  pinned: ReadonlyMap<string, string>; onPin: (id: string, name: string) => void;
   hiddenVariables: ReadonlySet<string>; onHideVariable: (name: string) => void; onRestoreVariables: () => void;
   onTree: () => void; onStack: () => void; onVariables: () => void;
 };
 
 export function Watch({ active, replay, index, playing, motion, speed, onMove, onSeek, onPlay, onFullscreen, onSpeed, onWrite, onInterview, onExamples,
-  onPause, onInspect, allSteps, onDetail, showTree, showStack, showVariables, hiddenVariables, onHideVariable, onRestoreVariables, desktop, onTree, onStack, onVariables }: Props) {
+  onPause, onInspect, allSteps, onDetail, showTree, showStack, showVariables, pinned, onPin, hiddenVariables, onHideVariable, onRestoreVariables, desktop, onTree, onStack, onVariables }: Props) {
   const surface = useRef<HTMLElement>(null);
   const settings = useRef<HTMLDetailsElement>(null);
   const expand = useRef<HTMLButtonElement>(null);
@@ -461,7 +490,7 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
         </div>
         <div className="scene-stack">
           {!replay || !scene || !sceneStep ? <p className="scene-empty">Run Python code to start playback.</p> :
-            scene.kind === 'array' || scene.kind === 'search' ? <ArrayScene replay={replay} step={sceneStep} beat={beat} moving={motion} speed={speed} allSteps={allSteps} /> :
+            scene.kind === 'array' || scene.kind === 'search' ? <ArrayScene replay={replay} step={sceneStep} beat={beat} moving={motion} speed={speed} /> :
             scene.kind === 'queue' ? <QueueScene queue={sceneStep.H[scene.id!]?.v ?? []} beat={beat} step={sceneStep} moving={motion} speed={speed} /> :
             scene.kind === 'graph' ? <GraphScene scene={scene} step={sceneStep} current={replay.watch.currentNodes.get(index)} processed={processed} beat={beat} moving={motion} speed={speed} zoom={zoom} /> :
             scene.kind === 'linked' ? <LinkedScene scene={scene} step={sceneStep} beat={beat} moving={motion} speed={speed} /> :
@@ -479,11 +508,26 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
             </div> : scene.kind === 'recursion' ? showingTree ? <CallTree replay={replay} index={index} beat={beat} moving={motion} speed={speed} zoom={zoom} fit={fitTree} />
               : <p className="scene-empty">Call tree hidden. The current operation is shown alongside playback.</p> :
             <ValueScene replay={replay} scene={scene} step={sceneStep} beat={beat} moving={motion} speed={speed} />}
+          {full && replay && step && [...pinned].filter(([id]) => id !== scene?.id).map(([id, name]) => {
+            const object = step.H[id];
+            const pinnedScene: Scene = { kind: 'value', id, name };
+            return <section key={id} className="pinned-visual" aria-label={`Pinned ${name}`}>
+              <header><h3>{name}</h3><button className="button neutral compact" type="button" onClick={() => onPin(id, name)}>Unpin</button></header>
+              {!object ? <p className="scene-empty">This value is out of scope at this step.</p> :
+                object.label === 'deque' ? <QueueScene queue={object.v} step={step} moving={motion} speed={speed} /> :
+                object.k === 'o' && object.c && object.v.some(entry => Array.isArray(entry) && ['next', 'left', 'right'].includes(entry[0])) ?
+                  <LinkedScene scene={{ ...pinnedScene, kind: 'linked', nodeClass: object.c }} step={step} moving={motion} speed={speed} /> :
+                ['l', 't'].includes(object.k) && object.v.every(isAtom) ?
+                  <ArrayScene replay={replay} scene={pinnedScene} step={step} moving={motion} speed={speed} /> :
+                  <ValueScene replay={replay} scene={pinnedScene} step={step} moving={motion} speed={speed} />}
+            </section>;
+          })}
         </div>
       </div>
     </div>
     {(showVariables || showStack) && <aside className="watch-sidebar" aria-label="Playback state">
       {showVariables && <VariableSnapshot key={replay?.id} id="watch-variables" label="Watch variables"
+        pinned={pinned} onPin={full ? onPin : undefined}
         step={step} previous={replay?.steps[index - 1]} hiddenVariables={hiddenVariables}
         onHideVariable={onHideVariable} onRestoreVariables={onRestoreVariables} />}
       {showStack && step && <section className="watch-stack-panel" aria-label="Call stack">

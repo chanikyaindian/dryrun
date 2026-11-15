@@ -109,5 +109,7 @@ test('compact Watch opens the matching window in Inspect and keeps the return pa
   await page.getByRole('button', { name: 'Inspect this step' }).click();
   await expect(page.getByRole('button', { name: 'Visualize', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('#stage [data-in-window] code')).toHaveText('2');
+  await expect(page.locator('#stage .row[data-bars]')).toBeVisible();
+  await expect(page.locator('#stage .summary-card')).toHaveCount(0);
   await expect(page.locator('#stage').getByRole('button', { name: 'Drag card to reorder' })).toBeHidden();
 });

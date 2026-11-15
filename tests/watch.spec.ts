@@ -113,6 +113,93 @@ print(list(queue))`);
   await expect(entries).toHaveText(['(0, 1)', '2', '3']);
 });
 
+test('custom array reads show bars and pointers and can pin a structure in either fullscreen', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    Object.defineProperty(Element.prototype, 'requestFullscreen', { value: () => Promise.reject(Error('Unavailable')) });
+  });
+  await page.goto('/#write');
+  await custom(page, `values = [5, 8, 13]
+lookup = {"seen": 2}
+total = 0
+for position in range(len(values)):
+    total += values[position]
+print(total)`);
+  await findBeat(page, /^Read values at index 1/);
+  const canvas = player(page).locator('.watch-canvas');
+  await expect(canvas.locator('.bars-scene [data-slot="1"][data-active="true"]')).toContainText('8');
+  await expect(canvas.locator('[data-slot="1"] [data-array-pointer="position"]')).toBeVisible();
+
+  await player(page).getByRole('button', { name: 'Fullscreen', exact: true }).click();
+  const watchFull = page.getByRole('dialog', { name: 'Algorithm player' });
+  await watchFull.getByRole('button', { name: 'Show variables', exact: true }).click();
+  const watchPin = watchFull.getByRole('button', { name: 'Pin lookup to canvas', exact: true });
+  await watchPin.click();
+  await expect(watchFull.getByRole('region', { name: 'Pinned lookup' }).getByRole('table', { name: 'lookup' })).toContainText('seen');
+  await watchPin.click();
+  await expect(watchFull.getByRole('region', { name: 'Pinned lookup' })).toBeHidden();
+  await watchFull.getByRole('button', { name: 'Exit fullscreen' }).click();
+
+  await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Inspect fullscreen', exact: true }).click();
+  const inspectFull = page.getByRole('dialog', { name: 'Inspect fullscreen' });
+  await expect(inspectFull.locator('#stage .row[data-bars]')).toBeVisible();
+  await inspectFull.getByRole('button', { name: 'Show variables', exact: true }).click();
+  const inspectPin = inspectFull.getByRole('button', { name: 'Pin lookup to canvas', exact: true });
+  await inspectPin.click();
+  await expect(inspectFull.locator('#stage .obj').filter({ hasText: 'lookup' })).toBeVisible();
+  await inspectPin.click();
+  await expect(inspectFull.locator('#stage .obj').filter({ hasText: 'lookup' })).toBeHidden();
+});
+
+test('recursive merge sort keeps the two input bars, their pointers, and the destination visible', async ({ page }) => {
+  await page.goto('/#write');
+  await custom(page, `def merge_sort(arr):
+    if len(arr) <= 1:
+        return
+    mid = len(arr) // 2
+    left = arr[:mid]
+    right = arr[mid:]
+    merge_sort(left)
+    merge_sort(right)
+    i = j = k = 0
+    while i < len(left) and j < len(right):
+        if left[i] <= right[j]:
+            arr[k] = left[i]
+            i += 1
+        else:
+            arr[k] = right[j]
+            j += 1
+        k += 1
+    while i < len(left):
+        arr[k] = left[i]
+        i += 1
+        k += 1
+    while j < len(right):
+        arr[k] = right[j]
+        j += 1
+        k += 1
+
+values = [4, 1, 3, 2]
+merge_sort(values)
+print(values)`);
+  const canvas = player(page).locator('.watch-canvas');
+  await findBeat(page, /^Compare 4 from left with 1 from right/);
+  await expect(canvas.locator('[data-bars] [data-related="true"] code')).toHaveText(['4', '1']);
+  await expect(canvas.locator('[data-topic-pointer="left:i"]')).toBeVisible();
+  await expect(canvas.locator('[data-topic-pointer="right:j"]')).toBeVisible();
+  await next(page).click();
+  await expect(canvas.getByRole('region', { name: 'arr', exact: true }).locator('[data-active="true"] code')).toHaveText('1');
+  await openWatchOptions(page);
+  await player(page).getByRole('button', { name: 'Inspect this step' }).click();
+  const stage = page.locator('#stage');
+  await expect(stage.locator('.row[data-bars]')).toHaveCount(3);
+  await expect(stage.locator('.summary-card')).toHaveCount(0);
+  await expect(stage.locator('.row .cell.on code').first()).toBeVisible();
+  await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Watch', exact: true }).click();
+  await timeline(page).press('End');
+  await expect(canvas.getByRole('region', { name: 'arr', exact: true }).locator('code')).toHaveText(['1', '2', '3', '4']);
+});
+
 test('default Watch hides debugging chrome and Inspect opens at the same line', async ({ page }) => {
   await page.context().route('https://cdn.jsdelivr.net/**', route => route.abort());
   await page.goto('/#watch');

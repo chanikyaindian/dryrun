@@ -1,6 +1,7 @@
 .obj{transition:opacity .3s;overflow-x:auto;padding-bottom:4px}.obj.gone{opacity:0}
 .hd{font:500 13px var(--sans);color:var(--mu);margin-bottom:8px}
 .row{position:relative}
+.row[data-bars]::before{content:"";position:absolute;inset:var(--plot-zero) 0 auto;border-top:1px solid var(--line)}
 .cell{position:absolute;top:0;left:0;background:var(--bar);color:var(--bart);border-radius:7px 7px 2px 2px;font:600 12px var(--mono);text-align:center;padding-top:6px;overflow:hidden;transition:transform var(--dur) cubic-bezier(.4,0,.2,1),height var(--dur) ease,opacity var(--dur),background .3s}
 .cell.in,.cell.out{opacity:0}.cell.on{background:var(--blue);color:var(--onb)}
 .cell.chg{animation:hl .9s,lift .6s ease}

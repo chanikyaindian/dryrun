@@ -321,3 +321,6 @@ select { color: var(--ink); background: var(--panel-soft); border: 1px solid var
 .variable-hide:hover { background: var(--bad-soft); }
 .variable-restore { padding: 4px 6px; border: 0; border-radius: 4px; color: var(--accent); background: transparent; font-size: 12px; }
 .variable-restore:hover { background: var(--accent-soft); }
+.variable-pin { display: inline-flex; gap: 4px; align-items: center; padding: 2px 4px; max-width: 100%; border: 0;
+  border-radius: 4px; background: transparent; color: var(--accent); font: inherit; overflow-wrap: anywhere; }
+.variable-pin:hover, .variable-pin[aria-pressed="true"] { background: var(--accent-soft); }

@@ -35,6 +35,7 @@ const media = window.matchMedia('(max-width: 760px)');
 const horizontalDefault: Layout = { editor: 36, results: 64 };
 const verticalDefault: Layout = { visualization: 74, inspector: 26 };
 const stageKeys = ['calls', ...rendererOptions.map(([key]) => key)] as const;
+const noPins: ReadonlyMap<string, string> = new Map();
 const layoutKey = 'dryrun.panels.v1.';
 type WorkspaceTab = 'code' | 'visualize' | 'inspect';
 type Mode = 'library' | 'interview' | 'write' | 'watch' | 'inspect';
@@ -122,6 +123,7 @@ function App() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('visualize');
   const [inspectionTab, setInspectionTab] = useState<InspectionTab>('variables');
   const [focusedVariable, setFocusedVariable] = useState('');
+  const [pinnedVariables, setPinnedVariables] = useState<ReadonlyMap<string, string>>(noPins);
   const [hiddenVariables, setHiddenVariables] = useState<ReadonlySet<string>>(new Set());
   const [replacement, setReplacement] = useState<string | null>(null);
   const [editorRevision, setEditorRevision] = useState(0);
@@ -162,7 +164,7 @@ function App() {
   const issue = writing && draftIssue?.source === source ? draftIssue.step : undefined;
   const editorStep = issue ?? (editorMatches ? step : undefined);
   const activeWorkspaceTab = writing ? 'code' : inspectFullscreen && mobile ? 'visualize' : workspaceTab;
-  const stageVisible = stageKeys.some(key => inspectViews[key]);
+  const stageVisible = stageKeys.some(key => inspectViews[key]) || inspectFullscreen && pinnedVariables.size > 0;
   const frame = step?.F.at(-1);
   const changes = inspecting && step && previous && showStepNote && step.F.length === previous.F.length ? diffs(previous, step) : [];
   const best = replay?.matches[0];
@@ -227,6 +229,7 @@ function App() {
       }
       if (!sample) setDraftIssue(null);
       setFocusedVariable('');
+      setPinnedVariables(noPins);
       setHiddenVariables(new Set());
       const same = visibleDocument.current.key === document.key && visibleDocument.current.code === document.code;
       const showWatch = (destination === 'watch' || intro) && same && origin === modeRef.current && !result.steps[0]?.syntax;
@@ -402,6 +405,14 @@ function App() {
   function hideVariable(name: string) {
     setHiddenVariables(names => new Set([...names, name]));
     setFocusedVariable(current => current === name ? '' : current);
+  }
+  function togglePin(id: string, name: string) {
+    setPinnedVariables(previous => {
+      const next = new Map(previous);
+      if (next.has(id)) next.delete(id);
+      else next.set(id, name);
+      return next;
+    });
   }
   function restoreVariables() {
     setHiddenVariables(new Set());
@@ -609,6 +620,7 @@ function App() {
                   {!inspectFullscreen && changes.length > 0 && <div className="change-list">{changes.map((change, position) => <code key={position}>{change}</code>)}</div>}
                 </div>}
                 {showFullscreenVariables && <VariableSnapshot key={replay?.id} id="inspect-fullscreen-variables" label="Inspect fullscreen variables" fullscreen
+                  pinned={pinnedVariables} onPin={togglePin}
                   step={step} previous={previous} hiddenVariables={hiddenVariables} onHideVariable={hideVariable} onRestoreVariables={restoreVariables} />}
                 {!stageVisible && <div className="empty-visual"><LayoutPanelTop /><p>Visualizations are hidden.</p>
                   <button className="button neutral compact" type="button" onClick={() => setPrefs(old => ({ ...old,
@@ -616,6 +628,7 @@ function App() {
                   }))}>Show visualizations</button></div>}
                 <div className="stage-shell" hidden={!stageVisible}>
                   <Stage replay={replay} index={index} views={inspectViews} focus={focusedVariable} speed={prefs.speed} motion={playback.motion}
+                    pinned={inspectFullscreen ? pinnedVariables : noPins}
                     visible={inspecting && stageVisible && (!mobile || activeWorkspaceTab === 'visualize')} onInteract={pause} desktop={!mobile} />
                 </div>
                 {stageVisible && <div className="legend"><span><i /> Just changed</span><span><i /> Active index</span><span><i /> Value read</span></div>}
@@ -646,6 +659,7 @@ function App() {
       onSpeed={speed => setPrefs(old => ({ ...old, speed }))} onWrite={openMyCode} onInterview={() => navigate('interview')} onExamples={openExamples}
       onPause={pause} onInspect={inspectMoment}
       desktop={!mobile} showTree={watchTree} showStack={watchStack} showVariables={Boolean(prefs.watchVariables)}
+      pinned={pinnedVariables} onPin={togglePin}
       hiddenVariables={hiddenVariables} onHideVariable={hideVariable} onRestoreVariables={restoreVariables}
       onTree={() => setCallView('calls', !watchTree)} onStack={() => setCallView('stack', !watchStack)}
       onVariables={() => setPrefs(old => ({ ...old, watchVariables: !old.watchVariables }))} />

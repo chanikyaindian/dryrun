@@ -8,6 +8,7 @@ export type TopicView = {
   rows?: { name: string; values: Scalar[]; active?: number[]; related?: number[]; index?: boolean; outside?: [number, number]; decimal?: number;
     pointers?: { name: string; index: number }[]; window?: [number, number]; characters?: boolean }[];
   grid?: { name: string; rows: Scalar[][]; active?: string[]; related?: string[]; reference?: string | number };
+  barDomain?: [number, number];
   nodePointers?: Record<string, string[]>;
   heap?: Scalar[];
   ranges?: { name: string; pairs: number[][] }[];
@@ -49,6 +50,88 @@ const facts = (step: Step, ...pairs: [string, string][]): [string, string][] =>
   pairs.map(([label, key]) => [label, nameOf(local(step, key))]);
 const event = (operation: string, label: string, active?: number[], related?: number[], details?: [string, string][]) =>
   ({ operation, label, active, related, facts: details });
+
+function mergeSortRule(source: string): Rule | undefined {
+  const compare = expr('^(?:if|elif)\\s+%\\[\\s*%\\s*\\]\\s*(?:<=?|>=?)\\s*%\\[\\s*%\\s*\\]\\s*:$');
+  const assign = expr('^%\\[\\s*%\\s*\\]\\s*=\\s*%\\[\\s*%\\s*\\]$');
+  const append = expr('^%\\.append\\(\\s*%\\[\\s*%\\s*\\]\\s*\\)$');
+  const lines = source.split('\n');
+  const compareLine = lines.find(line => {
+    const match = compare.exec(line);
+    return match && match[1] !== match[3];
+  });
+  if (!compareLine) return;
+  const [, left, leftIndex, right, rightIndex] = compare.exec(compareLine)!;
+  const inputs = new Map([[left, leftIndex], [right, rightIndex]]);
+  const outputMatch = lines.map(line => assign.exec(line) ?? append.exec(line)).find(match =>
+    match && !inputs.has(match[1]) && inputs.get(match.at(-2)!) === match.at(-1));
+  if (!outputMatch) return;
+  const output = outputMatch[1], outputIndex = outputMatch.length === 5 ? outputMatch[2] : undefined;
+  const variables = [left, right, output];
+  // Use the active call so two recursive calls with identical names stay separate.
+  const state = (step: Step, name: string): Scalar[] | undefined => {
+    const value = step.F.at(-1)?.v[name], data = heap(step, value);
+    return data && ['l', 't'].includes(data.k) && data.v.every(scalar) ? data.v : undefined;
+  };
+  const at = (step: Step, name: string) => {
+    const value = step.F.at(-1)?.v[name];
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+  };
+  const completed = new WeakMap<Step, Step>();
+  let finalMerge: Step | undefined;
+  return {
+    name: 'Merge sort', variables,
+    traceCue(_step, previous) { return { operation: 'Merge step', label: '', line: previous.l }; },
+    view(step, cue) {
+      const current = completed.get(step) ?? step;
+      const rows = variables.flatMap(name => {
+        const values = state(current, name);
+        if (!values) return [];
+        const pointer = name === output ? outputIndex : inputs.get(name);
+        const index = pointer && current === step ? at(step, pointer) : undefined;
+        return [{ name, values, index: true, active: cue?.changed?.[name], related: cue?.reads?.[name],
+          pointers: pointer && index !== undefined && index < values.length ? [{ name: pointer, index }] : [] }];
+      });
+      const numeric = rows.flatMap(row => row.values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value)));
+      return { rows, barDomain: [Math.min(0, ...numeric), Math.max(0, ...numeric)] };
+    },
+    event(before, after, line) {
+      if (after.F.length <= 1 && before.F.length > 1 && state(before, left) && state(before, right)) finalMerge = before;
+      if (after.F.length <= 1 && finalMerge) completed.set(after, finalMerge);
+      if (before.F.length !== after.F.length || before.F.at(-1)?.n !== after.F.at(-1)?.n) return;
+      const a = state(before, left), b = state(before, right);
+      const nextA = state(after, left), nextB = state(after, right);
+      if ((!a || !b) && nextA && nextB) {
+        return event('Prepare to merge', `Merge ${left} (${nextA.length} items) and ${right} (${nextB.length} items).`);
+      }
+      if (!a || !b || !nextA || !nextB) return;
+      const i = at(before, leftIndex), j = at(before, rightIndex);
+      if (line === compareLine && i !== undefined && j !== undefined && i < a.length && j < b.length) {
+        const reads = (name: string, index: number) => {
+          const value = before.F.at(-1)?.v[name];
+          return value && typeof value === 'object' && value.r !== undefined && after.rd?.includes(value.r + ':' + index);
+        };
+        if (reads(left, i) && reads(right, j)) return {
+          ...event('Compare merge candidates', `Compare ${display(a[i])} from ${left} with ${display(b[j])} from ${right}.`),
+          reads: { [left]: [i], [right]: [j] },
+        };
+      }
+      const write = assign.exec(line) ?? append.exec(line);
+      const next = state(after, output), prior = state(before, output);
+      if (!prior || !next || write?.[1] !== output) return;
+      const sourceName = write.at(-2)!, pointer = write.at(-1)!;
+      if (inputs.get(sourceName) !== pointer) return;
+      const from = at(before, pointer), values = sourceName === left ? a : b;
+      const to = write.length === 5 ? at(before, write[2]) : prior.length;
+      if (from === undefined || to === undefined || from >= values.length || !same(next[to], values[from])) return;
+      if (write.length === 4 && next.length !== prior.length + 1) return;
+      return {
+        ...event('Write merged value', `Copy ${display(values[from])} from ${sourceName}[${from}] to ${output}[${to}].`),
+        reads: { [sourceName]: [from] }, changed: { [output]: [to] },
+      };
+    },
+  };
+}
 
 function windowRule(source: string): Rule | undefined {
   const add = expr('(?:^|\\n)%\\s*\\+=\\s*%\\[\\s*%\\s*\\](?=\\n|$)').exec(source);
@@ -584,7 +667,7 @@ function stringBuilderRule(source: string): Rule | undefined {
 export function traceTopic(lines: string[], steps: Step[]): Topic | undefined {
   const statements = lines.map(line => line.replace(/\s+#.*$/, '').trim());
   const source = statements.join('\n');
-  const rules = [windowRule, kadaneRule, insertionRule, knapsackRule, stackRule, distancesRule, heapRule, hashRule,
+  const rules = [windowRule, mergeSortRule, kadaneRule, insertionRule, knapsackRule, stackRule, distancesRule, heapRule, hashRule,
     intervalRule, trieRule, pointersRule, prefixRule, bitsRule, setsRule, lifoRule, stringBuilderRule];
   for (const recognize of rules) {
     const rule = recognize(source);

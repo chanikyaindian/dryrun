@@ -124,6 +124,13 @@ export function searchState(step: Step, scene: Scene) {
   return (scene.bounds ?? []).map(name => scopeValue(step, name)).map(value =>
     typeof value === 'number' && Number.isInteger(value) ? value : undefined);
 }
+export function arrayPointers(step: Step, names: ReadonlySet<string> | undefined, size: number) {
+  return [...(names ?? [])].flatMap(name => {
+    const index = scopeValue(step, name);
+    return typeof index === 'number' && Number.isInteger(index) && index >= -size && index < size
+      ? [{ name, index: index < 0 ? index + size : index }] : [];
+  });
+}
 
 export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: string; s: number; lab?: string; rv?: string }[]): WatchModel {
   const source = document.code;
@@ -402,6 +409,8 @@ export function makeWatch(document: DocumentSource, steps: Step[], calls: { t: s
           changed.length === 1 ? 'Remove the value at index ' + i + '.' : 'Update ' + changed.length + ' cells.' };
       } else if (cells.length === 2 && condition(previous) && compareSource.test(line)) {
         action = { kind: 'compare', cells, label: 'Compare ' + cells.map(i => String(after.v[i])).join(' and ') + '.' };
+      } else if (document.key === 'my-code' && cells.length && step.out === previous?.out) {
+        action = { kind: 'probe', cells, label: 'Read ' + scene.name + ' at ' + (cells.length === 1 ? 'index ' : 'indices ') + cells.join(', ') + '.' };
       }
     } else if (scene.kind === 'grid' && previous && before && after) {
       const oldRows = matrixRows(before, previous), rows = matrixRows(after, step);

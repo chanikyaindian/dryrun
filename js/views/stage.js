@@ -1,11 +1,10 @@
-import { PN } from '../core.js';
 import { drawList, drawCard, drawGraph, isNode, graphCard, resetGraph } from './basic.js';
 import { isHeap, kind, drawPoints, drawBits, drawNet, drawGrid, drawIv, heapTree, drawCT, callCard, resetCalls } from './structures.js';
 
 const objs = new Map();
 
 export function drawStage(wrap, step, frame, index, previous, lastViewed, {
-  views, roles, topics, tree, speed, focus, relevance, indexNames, scene, withSummary, showSupporting, omitNames = /** @type {string[]} */ ([]), omitReference = /** @type {string | number | undefined} */ (undefined),
+  views, roles, topics, tree, speed, focus, relevance, indexNames, scene, withSummary, showSupporting, nativeArrays, pinned, omitNames = /** @type {string[]} */ ([]), omitReference = /** @type {string | number | undefined} */ (undefined),
 }) {
   const frames = step.F.length > 1 ? [step.F[0], frame] : [frame];
   const refs = new Map();
@@ -21,6 +20,9 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
       add(id, name);
     }
   }));
+  for (const [id, name] of pinned) {
+    if (step.H[id] && !refs.has(Number(id))) add(Number(id), name);
+  }
   for (const [id, names] of [...refs]) {
     if (step.H[id].k !== 'o') continue;
     for (const [field, value] of step.H[id].v) {
@@ -42,16 +44,18 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
     }));
     const score = relevance.get(String(id)) ?? 0;
     const primary = String(id) === scene.id || (scene.kind === 'graph' && names.includes(scene.queue));
-    const priority = names.includes(focus) ? 5 : String(id) === scene.id || (type === 'net' && score) ? 3 :
+    const pinnedHere = pinned.has(String(id));
+    const pinnedNode = pinnedHere && heap.k === 'o' && isNode(heap);
+    const priority = pinnedHere || names.includes(focus) ? 5 : String(id) === scene.id || nativeArrays.has(String(id)) || (type === 'net' && score) ? 3 :
       primary ? 2 : score ? 1 + score / (1 + score) : 0;
-    return { id, names, heap, type, priority, visible: views[type] && !(linked && views.nodes), heapTreeEnabled };
-  }).filter(object => object.id !== omitReference && !object.names.every(name => omitNames.includes(name)) && (object.visible || object.heapTreeEnabled))
+    return { id, names, heap, type, priority, pinnedHere, pinnedNode, visible: (pinnedHere || views[type]) && !(linked && views.nodes && !pinnedHere), heapTreeEnabled };
+  }).filter(object => !object.pinnedNode && (object.pinnedHere || (object.id !== omitReference && !object.names.every(name => omitNames.includes(name)) && (object.visible || object.heapTreeEnabled))))
     .sort((a, b) => b.priority - a.priority);
   const relevant = candidates.filter(candidate => candidate.priority > 0);
   const ranked = relevant.length || withSummary || relevance.size ? relevant : candidates.slice(0, 1);
   const primaryCount = ranked.filter(candidate => candidate.priority >= 2).length;
   const featuredCount = primaryCount || (withSummary ? 0 : 1);
-  const objects = ranked.slice(0, showSupporting ? 8 : featuredCount);
+  const objects = ranked.slice(0, showSupporting ? Math.max(8, featuredCount) : featuredCount);
 
   const asInteger = value => Number.isSafeInteger(value) ? BigInt(value) :
     /^-?\d+$/.test(value?.p ?? '') ? BigInt(value.p) : undefined;
@@ -63,7 +67,7 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
     element.remove();
     objs.delete(id);
   }
-  const pointers = Object.entries(frame.v).filter(([name, value]) => PN.test(name) && Number.isInteger(value) && value >= 0);
+  const pointers = Object.entries({ ...step.F[0]?.v, ...frame.v }).filter(([, value]) => Number.isInteger(value));
   const container = id => {
     let element = objs.get(id);
     if (!element) {
@@ -86,11 +90,14 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
     else if (type === 'net') drawNet(element, label, heap, step, frames);
     else if (type === 'points') drawPoints(element, label, heap, step);
     else if (type === 'list') {
+      const row = nativeArrays.get(String(id));
       const searchPointers = scene.kind === 'search' ? (String(id) === scene.id
         ? Object.entries(frame.v).filter(([name, value]) => scene.bounds.includes(name) && Number.isInteger(value) && value >= 0)
-        : []) : pointers.filter(([name]) => indexNames.get(String(id))?.has(name));
-      drawList(element, label, heap, searchPointers, id, step);
-      element._row.hidden = !views.list;
+        : []) : pointers.filter(([name, value]) => indexNames.get(String(id))?.has(name) && value >= -heap.v.length && value < heap.v.length)
+          .map(([name, value]) => [name, value < 0 ? value + heap.v.length : value]);
+      const pickedPointers = row?.pointers ? row.pointers.map(({ name, index }) => [name, index]) : searchPointers;
+      drawList(element, label, heap, pickedPointers, id, step, row);
+      element._row.hidden = !views.list && !pinned.has(String(id));
       if (heapTreeEnabled) heapTree(element, heap.v, names.some(name => /seg/.test(name)) ? 1 : 0, searchPointers, step.H);
       else element._tr?.remove();
     } else drawCard(element, label, step, heap, lastViewed, id);
@@ -103,12 +110,14 @@ export function drawStage(wrap, step, frame, index, previous, lastViewed, {
     drawBits(element, name, asInteger(value), priorValue);
   }
 
-  if (views.nodes) drawGraph(wrap, step, frames, speed);
+  const pinnedNodes = [...pinned].filter(([id]) => step.H[id]?.k === 'o' && isNode(step.H[id]));
+  const pinnedFrames = pinnedNodes.map(([id, name]) => ({ v: { [name]: { r: Number(id) } } }));
+  if (views.nodes || pinnedNodes.length) drawGraph(wrap, step, views.nodes ? [...frames, ...pinnedFrames] : pinnedFrames, speed);
   else if (graphCard()) graphCard().style.display = 'none';
   const focusedNode = [...refs].find(([, names]) => names.includes(focus));
   const graph = graphCard();
   if (graph) {
-    const focused = Boolean(focusedNode && step.H[focusedNode[0]]?.k === 'o');
+    const focused = pinnedNodes.length > 0 || Boolean(focusedNode && step.H[focusedNode[0]]?.k === 'o');
     graph.dataset.vizPriority = focused ? '5' : '3';
     graph.classList.toggle('focused-card', focused);
   }

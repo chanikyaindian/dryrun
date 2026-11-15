@@ -142,8 +142,15 @@ export function TopicPanel({ view, cue, motion = false, speed = 560, showKey = f
       const focus = row.active?.at(-1) ?? row.pointers?.at(-1)?.index ?? row.related?.at(-1) ?? 0;
       const start = Math.min(Math.max(0, row.values.length - limit), Math.max(0, focus - 12));
       const visible = row.values.slice(start, start + limit);
+      const numeric = row.decimal === undefined && !row.characters && row.values.length > 0 &&
+        row.values.every(value => typeof value === 'number' && Number.isFinite(value));
+      const values = view.barDomain ?? row.values;
+      const scale = numeric ? Math.max(1, ...values.map(value => Math.abs(Number(value)))) : 1;
+      const low = numeric ? Math.min(0, ...values.map(value => Number(value) / scale)) : 0;
+      const high = numeric ? Math.max(0, ...values.map(value => Number(value) / scale)) : 1;
       return <section className="topic-row" key={row.name} aria-label={row.name} data-bits={row.decimal !== undefined || undefined}
-        data-pointers={row.pointers ? '' : undefined} data-characters={row.characters || undefined} data-window={row.window ? '' : undefined}>
+        data-pointers={row.pointers ? '' : undefined} data-characters={row.characters || undefined} data-window={row.window ? '' : undefined}
+        data-bars={numeric || undefined}>
       <h3>{row.name}{row.decimal !== undefined && <small> · {row.decimal}</small>}
         {row.window && <small> · {row.window[0] <= row.window[1] ? `Window ${row.window[0]}–${row.window[1]}` : 'Empty window'}</small>}</h3>
       {visible.length ? <ol className="topic-cells">{visible.map((value, position) => {
@@ -154,9 +161,15 @@ export function TopicPanel({ view, cue, motion = false, speed = 560, showKey = f
           data-pointed={Boolean(pointers?.length) || undefined}
           data-in-window={Boolean(row.window && i >= row.window[0] && i <= row.window[1]) || undefined}
           data-outside={Boolean(row.outside && (i < row.outside[0] || i > row.outside[1]))}>
+          {numeric && <span className="topic-bar-plot" aria-hidden="true">
+            <i style={{
+              '--bar-y': (high - Math.max(0, Number(value) / scale)) / (high - low || 1) * 100 + '%',
+              '--bar-height': Math.max(3, Math.abs(Number(value) / scale) / (high - low || 1) * 100) + '%',
+            } as CSSProperties} />
+          </span>}
           <code>{row.characters && value === ' ' ? <span aria-label="Space">␠</span> : display(value)}</code>{row.index && <small>{i}</small>}
           {pointers && <span className="topic-pointer-lane">{pointers.map(({ name }) =>
-            <span className="topic-pointer" key={name} data-topic-pointer={row.name + ':' + name}>{name}</span>)}</span>}
+            <span className="topic-pointer" key={name} data-topic-pointer={row.name + ':' + name} title={name}>{name}</span>)}</span>}
         </li>;
       })}</ol> : <p className="topic-empty">Empty</p>}
       {row.values.length > limit && <small>Showing entries {start + 1}–{start + visible.length} of {row.values.length}.</small>}

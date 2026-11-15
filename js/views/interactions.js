@@ -229,14 +229,14 @@ export function createStageControls(stage, announce, onInteract, onHidden) {
   for (const [type, listener] of Object.entries(handlers)) stage.addEventListener(type, listener);
   return {
     refresh,
-    restore(id) {
+    restore(id, focus = true) {
       const title = hidden.get(id);
       if (!title) return;
       hidden.delete(id);
       onHidden([...hidden]);
       refresh();
       announce(title + ' restored');
-      stage.focus({ preventScroll: true });
+      if (focus) stage.focus({ preventScroll: true });
     },
     reset() {
       customOrder = false;
