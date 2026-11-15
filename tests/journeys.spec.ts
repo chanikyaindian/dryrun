@@ -113,24 +113,3 @@ test('compact Watch opens the matching window in Inspect and keeps the return pa
   await expect(page.locator('#stage .summary-card')).toHaveCount(0);
   await expect(page.locator('#stage').getByRole('button', { name: 'Drag card to reorder' })).toBeHidden();
 });
-
-test('Watch keeps a sliding window on one scrollable track at 320 pixels', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 720 });
-  await page.route('https://cdn.jsdelivr.net/**', route => route.abort());
-  await page.goto('/#watch?example=Sliding%20window');
-  await expect(page.getByRole('button', { name: 'Next event' })).toBeEnabled();
-  const timeline = page.getByRole('slider', { name: 'Watch event' });
-  await timeline.press('End');
-  await timeline.press('ArrowLeft');
-  const track = page.locator('.topic-row[data-window] .array-scroll');
-  await expect(track).toBeVisible();
-  await expect(track.locator('[data-topic-pointer="Input:right"]')).toBeInViewport();
-  const layout = await track.evaluate(node => ({
-    hasOverflow: node.scrollWidth > node.clientWidth,
-    scrollLeft: node.scrollLeft,
-    rows: new Set([...node.querySelectorAll('li')].map(cell => cell.offsetTop)).size,
-    pageWidth: document.documentElement.scrollWidth,
-  }));
-  expect(layout).toMatchObject({ hasOverflow: true, rows: 1, pageWidth: 320 });
-  expect(layout.scrollLeft).toBeGreaterThan(0);
-});

@@ -1,26 +1,14 @@
 .obj{transition:opacity .3s;overflow-x:auto;padding-bottom:4px}.obj.gone{opacity:0}
 .hd{font:500 13px var(--sans);color:var(--mu);margin-bottom:8px}
-.array-scroll{min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin;scrollbar-color:var(--mu) transparent}
-.array-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:5px}
-.inspect-array-scroll:has(>.row[hidden]){display:none}
-.row{--plot-height:clamp(44px,11dvh,96px);position:relative;margin-inline:auto;overflow:clip;height:calc(var(--pointer-height) + 52px)}
-.row[data-bars]{height:calc(var(--plot-height) + var(--pointer-height) + 44px)}
-.array-window{position:absolute;inset:0 auto 0;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:6px;background:color-mix(in srgb,var(--accent) 13%,var(--surface));transition:left var(--dur),width var(--dur)}
-.row[data-bars]::after{content:"";position:absolute;top:calc(var(--plot-height)*var(--plot-zero));inset-inline:0;border-top:1px solid var(--line);pointer-events:none}
-.cell{position:absolute;top:0;left:0;text-align:center;font:600 12px var(--mono);transition:transform var(--dur) cubic-bezier(.4,0,.2,1),opacity var(--dur)}
-.cell code{display:block;margin:2px 3px 0;padding:3px 2px;border:1px solid var(--line);border-radius:4px;background:var(--panel-soft);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.inspect-bar-plot{display:none}
-.row[data-bars] .inspect-bar-plot{display:block;position:relative;height:var(--plot-height)}
-.inspect-bar-plot i{position:absolute;inset:var(--bar-y) 6px auto;height:var(--bar-height);border-radius:4px;background:var(--bar);transition:top var(--dur),height var(--dur),background var(--dur)}
-.cell.in,.cell.out{opacity:0}.cell.out{pointer-events:none}
-.cell.on code{border-color:var(--accent)}.cell.on i{background:var(--accent)}
-.cell.chg code{animation:hl .9s}
+.row{position:relative}
+.row[data-bars]::before{content:"";position:absolute;inset:var(--plot-zero) 0 auto;border-top:1px solid var(--line)}
+.cell{position:absolute;top:0;left:0;background:var(--bar);color:var(--bart);border-radius:7px 7px 2px 2px;font:600 12px var(--mono);text-align:center;padding-top:6px;overflow:hidden;transition:transform var(--dur) cubic-bezier(.4,0,.2,1),height var(--dur) ease,opacity var(--dur),background .3s}
+.cell.in,.cell.out{opacity:0}.cell.on{background:var(--blue);color:var(--onb)}
+.cell.chg{animation:hl .9s,lift .6s ease}
 @keyframes hl{from{background:var(--hl);color:#2b2200}}
 @keyframes lift{40%{translate:0 -14px;scale:1.08}}
-.ix{position:absolute;top:26px;left:0;text-align:center;font:11px var(--mono);color:var(--mu)}
-.pt{position:absolute;top:40px;left:0;z-index:1;padding-inline:2px;text-align:center;font:600 10px/14px var(--mono);color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:transform var(--dur) cubic-bezier(.4,0,.2,1)}
-.row[data-bars] .ix{top:calc(var(--plot-height) + 24px)}
-.row[data-bars] .pt{top:calc(var(--plot-height) + 37px)}
+.ix{position:absolute;top:124px;left:0;text-align:center;font:11px var(--mono);color:var(--mu)}
+.pt{position:absolute;top:0;left:0;text-align:center;font:600 11px var(--mono);color:var(--blue);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:transform var(--dur) cubic-bezier(.4,0,.2,1)}
 .l2{font:13px var(--mono);padding:2px 6px;border-radius:5px;white-space:pre-wrap}
 .l2.chg,.vr.chg{animation:fl2 1s}@keyframes fl2{from{background:var(--hl);color:#2b2200}}
 .nd,.tg,.eg{transition:opacity .45s}
@@ -29,7 +17,7 @@
 .nd text{font:600 13px var(--mono);fill:var(--ink)}
 .eg{fill:none;stroke:var(--mu);stroke-width:1.6}
 .tg{font:600 11px var(--mono);fill:var(--blue)}
-.cell.rd code{border:1px dashed var(--accent)}.cell.dim i{opacity:.38}.cell.dim code{color:var(--mu)}
+.cell.rd{outline:2px dashed var(--blue);outline-offset:2px}.cell.dim{opacity:.3}.cell.win{filter:saturate(1.9) brightness(.92)}
 .gr{display:grid;gap:3px}.g{height:34px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--line);color:var(--ink);font:500 12px var(--mono)}
 .g.chg{animation:hl .9s}.g.cu{background:var(--blue);color:var(--onb)}.g.rd{outline:2px dashed var(--blue);outline-offset:-2px}
 .gn circle{fill:var(--sheet);stroke:var(--bar);stroke-width:2;transition:fill .3s,stroke .3s}.gn.vis circle{fill:var(--bs);stroke:var(--blue)}.gn.nb circle{stroke:var(--hl);stroke-width:4}.gn.cu circle{fill:var(--blue);stroke:var(--blue)}.gn.cu text{fill:var(--onb)}

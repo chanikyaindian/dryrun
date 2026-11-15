@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, CodeXml, ListTree, Maximize, Minimize, Minus, Pause, Play, Plus, RotateCcw, Settings2, Variable } from 'lucide-react';
 import { rp } from '../js/views/basic.js';
-import { barLayout, followArrayFocus } from '../js/views/array-layout.js';
 import { kind, netOf, pointLayout } from '../js/views/structures.js';
 import { arrayPointers, beatPosition, isAtom, linkedNodes, matrixRows, readIndices, scopeValue, searchState, type Beat, type Network, type Scene } from './watchModel';
 import type { Replay, Step } from './workspace';
@@ -34,14 +33,13 @@ function useCue(host: React.RefObject<HTMLElement | null>, beat: Beat | undefine
 function ArrayScene({ replay, step, beat, moving, speed, scene = replay.watch.scene }: { replay: Replay; step: Step; beat?: Beat; moving: boolean; speed: number; scene?: Scene }) {
   const values = step.H[scene.id!]?.v ?? [];
   const slots = useRef<HTMLDivElement>(null);
-  const viewport = useRef<HTMLDivElement>(null);
   const pointerPositions = useRef(new Map<string, number>());
   const [lo, hi, pivot] = searchState(step, scene);
   const reads = scene.id ? readIndices(step, scene.id) : [];
   const pointers = scene.kind === 'search' ? [] : arrayPointers(step, replay.watch.indexNames.get(scene.id!), values.length);
   const target = scene.target ? scopeValue(step, scene.target) : undefined;
   const [min, max] = useMemo(() => {
-    let min = 0, max = 0;
+    let min = 0, max = 1;
     for (const snapshot of replay.steps) {
       for (const value of snapshot.H[scene.id!]?.v ?? []) {
         if (typeof value !== 'number' || !Number.isFinite(value)) continue;
@@ -52,30 +50,23 @@ function ArrayScene({ replay, step, beat, moving, speed, scene = replay.watch.sc
     return [min, max];
   }, [replay, scene.id]);
   const bars = values.length > 0 && values.every(value => typeof value === 'number' && Number.isFinite(value));
-  const range = lo !== undefined && hi !== undefined ? [Math.max(0, lo), Math.min(values.length - 1, hi)] : undefined;
-  const focus = beat?.cells?.at(-1) ?? pivot ?? reads.at(-1) ?? pointers.at(-1)?.index;
   useLayoutEffect(() => {
     const host = slots.current;
-    const scrollport = viewport.current;
-    if (!host || !scrollport) return;
-    const cell = (index: number | undefined) => index === undefined ? undefined : host.children[index] as HTMLElement | undefined;
-    scrollport.tabIndex = scrollport.scrollWidth > scrollport.clientWidth ? 0 : -1;
-    const scrolled = followArrayFocus(scrollport, cell(range?.[0]), cell(range?.[1]), cell(focus));
     const positions = new Map<string, number>();
     const animations: Animation[] = [];
-    for (const marker of host.querySelectorAll<HTMLElement>('[data-array-pointer]')) {
+    for (const marker of host?.querySelectorAll<HTMLElement>('[data-array-pointer]') ?? []) {
       const name = marker.dataset.arrayPointer!;
-      const x = marker.getBoundingClientRect().left - host.getBoundingClientRect().left;
+      const x = marker.getBoundingClientRect().left - host!.getBoundingClientRect().left;
       const previous = pointerPositions.current.get(name);
       positions.set(name, x);
-      if (moving && !scrolled && previous !== undefined && previous !== x) {
+      if (moving && previous !== undefined && previous !== x) {
         const animation = animate(marker, [{ transform: `translateX(${previous - x}px)` }, { transform: 'translateX(0)' }], speed);
         if (animation) animations.push(animation);
       }
     }
     pointerPositions.current = positions;
     return () => animations.forEach(animation => animation.cancel());
-  }, [scene.id, step, moving, speed, range?.[0], range?.[1], focus]);
+  }, [scene.id, step, moving, speed]);
   useLayoutEffect(() => {
     if (!moving || !beat?.cells || !slots.current) return;
     const elements = beat.cells.map(i => slots.current?.querySelector<HTMLElement>('[data-slot="' + i + '"] .array-glyph'));
@@ -101,33 +92,34 @@ function ArrayScene({ replay, step, beat, moving, speed, scene = replay.watch.sc
   }, [beat, moving, speed]);
 
   if (!values.length) return <p className="scene-empty">Waiting for {scene.name}.</p>;
-  const { zero, height } = barLayout(min, max);
+  const span = max - min;
+  const scale = span === Infinity ? .5 : 1;
+  const scaledSpan = max * scale - min * scale;
+  const zero = 8 + max * scale / scaledSpan * 84;
+  const range = lo !== undefined && hi !== undefined ? [Math.max(0, lo), Math.min(values.length - 1, hi)] : undefined;
   return <div className="array-viewport">
     {target !== undefined && <p className="array-target">Target <code>{rp(step.H, target)}</code></p>}
-    <div ref={viewport} className="array-scroll" role="region" aria-label={scene.name + ' values'}>
-      <div ref={slots} className={'array-scene' + (bars ? ' bars-scene' : '')} data-moving={moving}
-        style={{ '--slots': values.length, '--zero': zero / 100 } as CSSProperties} aria-label={scene.name + ', ' + values.length + ' values'}>
-        {values.map((value, index) => {
-          const active = Boolean(beat?.cells?.includes(index));
-          const outside = range && (index < range[0] || index > range[1]);
-          const probe = scene.kind === 'search' && pivot === index && !outside;
-          const roles = [range?.[0] === index ? scene.bounds?.[0] : '', probe ? scene.bounds?.[2] : '', range?.[1] === index ? scene.bounds?.[1] : '',
-            ...pointers.filter(pointer => pointer.index === index).map(pointer => pointer.name)].filter(Boolean);
-          const magnitude = bars ? height(Number(value)) : 0;
-          const label = isAtom(value) ? format(value) : rp(step.H, value);
-          return <div key={index} className="array-slot" data-slot={index} data-outside={Boolean(outside)}
-            data-active={active || probe} data-read={!active && !probe && reads.includes(index)} data-changed={active && ['swap', 'write'].includes(beat?.kind ?? '')}>
-            <div className="array-glyph">
-              {bars && <span className="watch-bar-plot" aria-hidden="true"><i style={{
-                top: (Number(value) < 0 ? zero : zero - magnitude) + '%', height: magnitude + '%',
-              }} /></span>}
-              <span title={label}>{label}</span>
-            </div>
-            <span className="array-index">{index}</span>
-            <span className="array-role">{[...new Set(roles)].map(name => <span key={name} data-array-pointer={name} title={name}>{name}</span>)}</span>
-          </div>;
-        })}
-      </div>
+    <div ref={slots} className={'array-scene' + (bars ? ' bars-scene' : '')} data-moving={moving}
+      style={{ '--slots': values.length, '--zero': zero / 100 } as CSSProperties} aria-label={scene.name + ', ' + values.length + ' values'}>
+      {values.map((value, index) => {
+        const active = Boolean(beat?.cells?.includes(index));
+        const outside = range && (index < range[0] || index > range[1]);
+        const probe = scene.kind === 'search' && pivot === index && !outside;
+        const roles = [range?.[0] === index ? scene.bounds?.[0] : '', probe ? scene.bounds?.[2] : '', range?.[1] === index ? scene.bounds?.[1] : '',
+          ...pointers.filter(pointer => pointer.index === index).map(pointer => pointer.name)].filter(Boolean);
+        const glyph = bars ? {
+          height: Math.abs(Number(value) * scale) / scaledSpan * 84 + '%',
+          ...(Number(value) < 0 ? { top: zero + '%' } : { bottom: (100 - zero) + '%' }),
+        } : undefined;
+        return <div key={index} className="array-slot" data-slot={index} data-outside={Boolean(outside)}
+          data-active={active || probe} data-read={!active && !probe && reads.includes(index)} data-changed={active && ['swap', 'write'].includes(beat?.kind ?? '')}>
+          <div className="glyph-track"><div className="array-glyph" style={glyph}>
+            <span title={format(value)}>{isAtom(value) ? format(value) : rp(step.H, value)}</span>
+          </div></div>
+          <span className="array-index">{index}</span>
+          <span className="array-role">{[...new Set(roles)].map(name => <span key={name} data-array-pointer={name} title={name}>{name}</span>)}</span>
+        </div>;
+      })}
     </div>
   </div>;
 }

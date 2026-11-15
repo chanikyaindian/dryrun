@@ -151,36 +151,6 @@ print(total)`);
   await expect(inspectFull.locator('#stage .obj').filter({ hasText: 'lookup' })).toBeHidden();
 });
 
-test('wide arrays keep the active value in view without widening either canvas', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 760 });
-  await page.goto('/#write');
-  await custom(page, `values = [n - 9 for n in range(20)]
-total = 0
-for position in range(17, 20):
-    total += values[position]
-print(total)`);
-  await findBeat(page, /^Read values at index 18/);
-  const watchScroll = player(page).getByRole('region', { name: 'values values' });
-  const rightmostRead = watchScroll.locator('[data-slot="18"] .array-glyph');
-  await expect(rightmostRead).toHaveText('9');
-  await expect(rightmostRead).toBeInViewport();
-  expect(await watchScroll.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
-  await watchScroll.evaluate(node => { node.scrollLeft = 0; });
-  await expect(watchScroll.locator('[data-slot="0"] .array-glyph')).toBeInViewport();
-  const event = await timeline(page).inputValue();
-  await watchScroll.press('ArrowRight');
-  await expect.poll(() => watchScroll.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
-  await expect(timeline(page)).toHaveValue(event);
-
-  await openWatchOptions(page);
-  await player(page).getByRole('button', { name: 'Inspect this step' }).click();
-  const inspectScroll = page.locator('#stage .inspect-array-scroll').first();
-  await expect(inspectScroll.locator('.cell.rd code')).toHaveText('9');
-  await expect(inspectScroll.locator('.cell.rd code')).toBeInViewport();
-  expect(await inspectScroll.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
-});
-
 test('recursive merge sort keeps the two input bars, their pointers, and the destination visible', async ({ page }) => {
   await page.goto('/#write');
   await custom(page, `def merge_sort(arr):

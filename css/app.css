@@ -179,18 +179,8 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; width: 15px; he
 .inspect-fullscreen .fullscreen-variables { flex: 0 1 auto; max-height: min(25dvh, 190px); margin: 6px 8px; }
 .inspect-fullscreen .visualization-header { flex-wrap: wrap; }
 .inspect-fullscreen .stage-actions { flex-wrap: wrap; gap: 5px; }
-.single-card > .obj:has(> .inspect-array-scroll > .row:not([hidden])):not(:has(> .ht)) { display: flex; flex-direction: column; }
-.single-card > .obj:not(:has(> .ht)) > .inspect-array-scroll { flex: 0 0 auto; margin-block: auto; }
-.visual-stage .obj:has(>.inspect-array-scroll):not([data-draggable]) .hd { padding-right: 28px; }
-.hd .window-range { display: inline-block; margin-inline-start: 8px; padding: 2px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 11px; }
-@media (max-height: 720px) {
-  .visualization:has(.inspect-array-scroll) .pattern-strip { padding-block: 4px; }
-  .visualization:has(.inspect-array-scroll) .step-note { padding-block: 5px; }
-  .visualization .visual-stage:has(.inspect-array-scroll) { padding: 6px; }
-  .visual-stage .obj:has(>.inspect-array-scroll):not(:has(> .ht)) { padding-block: 5px; }
-  .visual-stage .obj:has(>.inspect-array-scroll) .hd { margin-bottom: 4px; }
-  .workspace:not(.inspect-fullscreen) .visual-stage .row { --plot-height: clamp(36px, 7.6dvh, 55px); }
-}
+.inspect-fullscreen .single-card > .obj:has(> .row:not([hidden])):not(:has(> .ht)) { display: flex; flex-direction: column; }
+.inspect-fullscreen .single-card > .obj:has(> .row:not([hidden])):not(:has(> .ht)) > .row { flex: 0 0 auto; margin: auto; }
 .legend { border-top: 1px solid var(--line); display: flex; align-items: center; gap: 13px; padding: 6px 12px; font-size: 10px; color: var(--mu); }
 .legend span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--hl); }
