@@ -75,10 +75,13 @@ print(built)`);
   await expect(slider).toBeVisible({ timeout: 90000 });
   const stage = page.locator('#stage');
   const result = stage.getByRole('region', { name: 'built', exact: true });
-  await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect(result.locator('[data-active="true"] code')).toHaveText('😀');
-  await expect(result.locator('[data-active="true"] code')).toHaveText('a');
-  await slider.press('End');
+  const nextStep = page.getByRole('button', { name: 'Next step', exact: true });
+  const highlighted: string[] = [];
+  while (await nextStep.isEnabled()) {
+    await nextStep.click();
+    highlighted.push(...await result.locator('[data-active="true"] code').allTextContents());
+  }
+  expect(highlighted).toEqual(['😀', 'a']);
   await expect(result.locator('code')).toHaveText(['😀', 'a']);
 });
 
