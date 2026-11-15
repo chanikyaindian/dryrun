@@ -122,6 +122,7 @@ function App() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('visualize');
   const [inspectionTab, setInspectionTab] = useState<InspectionTab>('variables');
   const [focusedVariable, setFocusedVariable] = useState('');
+  const [hiddenVariables, setHiddenVariables] = useState<ReadonlySet<string>>(new Set());
   const [replacement, setReplacement] = useState<string | null>(null);
   const [editorRevision, setEditorRevision] = useState(0);
   const [draftIssue, setDraftIssue] = useState<{ source: string; step: Step } | null>(null);
@@ -188,7 +189,7 @@ function App() {
     if (focusedMode.current === mode) return;
     focusedMode.current = mode;
     if (mode === 'interview' || inspectFullscreen) return;
-    const target = mode === 'library' ? '#library-title' : mode === 'watch' ? '.watch-heading h2'
+    const target = mode === 'library' ? '#library-title' : mode === 'watch' ? '.watch-player'
       : mode === 'inspect' && mobile && workspaceTab !== 'code' ? '.workspace-tabs [aria-current="page"]' : '.editor-pane h2';
     const frame = requestAnimationFrame(() => document.querySelector<HTMLElement>(target)?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
@@ -227,6 +228,7 @@ function App() {
       }
       if (!sample) setDraftIssue(null);
       setFocusedVariable('');
+      setHiddenVariables(new Set());
       const same = visibleDocument.current.key === document.key && visibleDocument.current.code === document.code;
       const showWatch = (destination === 'watch' || intro) && same && origin === modeRef.current && !result.steps[0]?.syntax;
       dispatch({ type: 'ready', replay: result, watch: showWatch, allSteps: watchStepsPreference.current ?? Boolean(document.lesson) });
@@ -398,10 +400,25 @@ function App() {
     setEditorRevision(value => value + 1);
     openMyCode();
   }
-  function runCurrent(destination: RunDestination = 'inspect') {
+  function hideVariable(name: string) {
+    setHiddenVariables(names => new Set([...names, name]));
+    setFocusedVariable(current => current === name ? '' : current);
+  }
+  function restoreVariables() {
+    setHiddenVariables(new Set());
+  }
+  function runCurrent(destination: RunDestination = writing ? 'output' : 'inspect') {
     if (!source.trim() || pending) return;
+    if (destination === 'output') {
+      void run(documentSource, null);
+      return;
+    }
     if (writing && sameSource && !playback.error) {
-      if (destination === 'watch') navigate('watch', documentSource);
+      if (destination === 'watch') {
+        const first = replay?.watch.beats[0]?.index ?? 0;
+        if (!allWatchSteps && index < first) dispatch({ type: 'seek', index: first });
+        navigate('watch', documentSource);
+      }
       else {
         inspectMoment();
         if (destination === 'inspect-fullscreen') enterInspectFullscreen();
@@ -459,7 +476,7 @@ function App() {
       </svg></span><div><h1>dryrun<span>.</span></h1><p>Python visualizer</p></div></div>
       <nav className="product-nav" aria-label="Dryrun pages">
         <button type="button" aria-current={mode === 'library' || mode === 'interview' ? 'page' : undefined} onClick={() => navigate('library')}><BookOpen /><span>Examples</span></button>
-        <button type="button" aria-current={writing ? 'page' : undefined} onClick={openMyCode}><CodeXml /><span>Write</span></button>
+        <button type="button" aria-current={writing ? 'page' : undefined} onClick={openMyCode}><CodeXml /><span>Custom code</span></button>
         <button type="button" disabled={!replay} aria-current={inspecting ? 'page' : undefined} onClick={() => { if (!inspecting) inspectMoment(); }}><ListTree /><span>Inspect</span></button>
         <button type="button" disabled={!replay} onClick={() => { if (!inspecting) inspectMoment(); enterInspectFullscreen(); }}><Maximize /><span>Inspect fullscreen</span></button>
         <button type="button" disabled={!replay || Boolean(replay.steps[0]?.syntax)} aria-current={watching ? 'page' : undefined} onClick={() => navigate('watch', replay?.source)}><Activity /><span>Watch</span></button>
@@ -537,8 +554,8 @@ function App() {
         <Separator className="splitter vertical-splitter" id="resize-editor" aria-label="Resize editor and visualization" />
         <Panel id="results" className="results-panel" minSize="330px">
           {writing && <WriteGuide source={source} pending={pending} pendingMessage={runMessage}
-            error={playback.error || (sameSource ? replay?.steps.at(-1)?.error ?? '' : '')}
-            ready={Boolean(sameSource && replay)} onRun={runCurrent} />}
+            error={playback.error || issue?.error || (sameSource ? replay?.steps.at(-1)?.error ?? '' : '')}
+            output={sameSource && !issue && !playback.error ? replay?.steps.at(-1)?.out : undefined} onRun={runCurrent} />}
           <div className="inspect-results" hidden={!inspecting}>
           <Group className="results-group" id="results-split" orientation="vertical" groupRef={stacked} disabled={mobile || !inspecting || inspectFullscreen} defaultLayout={vertical}
             onLayoutChanged={(layout, meta) => {
@@ -593,7 +610,7 @@ function App() {
                   {!inspectFullscreen && changes.length > 0 && <div className="change-list">{changes.map((change, position) => <code key={position}>{change}</code>)}</div>}
                 </div>}
                 {showFullscreenVariables && <VariableSnapshot key={replay?.id} id="inspect-fullscreen-variables" label="Inspect fullscreen variables" fullscreen
-                  step={step} previous={previous} />}
+                  step={step} previous={previous} hiddenVariables={hiddenVariables} onHideVariable={hideVariable} onRestoreVariables={restoreVariables} />}
                 {!stageVisible && <div className="empty-visual"><LayoutPanelTop /><p>Visualizations are hidden.</p>
                   <button className="button neutral compact" type="button" onClick={() => setPrefs(old => ({ ...old,
                     views: { ...old.views, ...Object.fromEntries(rendererOptions.map(([key]) => [key, true])) },
@@ -608,6 +625,7 @@ function App() {
             <Separator className="splitter horizontal-splitter" id="resize-inspector" aria-label="Resize visualization and inspector" />
             <Panel id="inspector" className="inspector-panel" minSize="125px" collapsible collapsedSize={0} panelRef={inspector}>
               <Inspector key={replay?.id ?? 0} step={step} previous={previous} tab={inspectionTab} setTab={setInspectionTab} showStack={prefs.views.stack}
+                hiddenVariables={hiddenVariables} onHideVariable={hideVariable} onRestoreVariables={restoreVariables}
                 onClose={() => setPrefs(old => ({ ...old, inspector: false }))} focus={focusedVariable} onFocus={name => {
                   setFocusedVariable(old => old === name ? '' : name);
                   if (mobile) setWorkspaceTab('visualize');
@@ -629,8 +647,7 @@ function App() {
       onSpeed={speed => setPrefs(old => ({ ...old, speed }))} onWrite={openMyCode} onInterview={() => navigate('interview')} onExamples={openExamples}
       onPause={pause} onInspect={inspectMoment}
       desktop={!mobile} showTree={watchTree} showStack={watchStack} showVariables={Boolean(prefs.watchVariables)}
-      showFullscreenVariables={Boolean(prefs.watchFullscreenVariables)}
-      onFullscreenVariables={() => setPrefs(old => ({ ...old, watchFullscreenVariables: !old.watchFullscreenVariables }))}
+      hiddenVariables={hiddenVariables} onHideVariable={hideVariable} onRestoreVariables={restoreVariables}
       onTree={() => setCallView('calls', !watchTree)} onStack={() => setCallView('stack', !watchStack)}
       onVariables={() => setPrefs(old => ({ ...old, watchVariables: !old.watchVariables }))} />
     {!inspectFullscreen && timeline}

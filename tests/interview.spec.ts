@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { openWatchOptions, seekWatchCheckpoint } from './watch-helpers';
 import { interviewCatalog } from '../js/interview-catalog.js';
+import { interviewDocument } from '../src/InterviewCatalog';
 import { interviewLessons } from '../js/interview-lessons.js';
 
 test('Top Interview 150 has a walkthrough for every problem and filters the official list', async ({ page }) => {
@@ -40,7 +42,7 @@ test('the study plan keeps filters and restores the lesson button after Inspect 
   const original = interviewLessons['minimum-size-subarray-sum'].code;
   await expect(editor).toContainText(original.split('\n')[0]);
   await editor.fill(original + '\n# My notes');
-  await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Write' }).click();
+  await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Custom code' }).click();
   await expect(page).toHaveURL(/#write$/);
   await expect(editor).not.toContainText('# My notes');
   await page.goBack();
@@ -60,8 +62,7 @@ test('walkthrough pointers follow their own arrays and slide with the window', a
   await page.route('https://cdn.jsdelivr.net/**', route => route.abort());
   await page.goto('/#watch?lesson=merge-sorted-array');
   await page.getByRole('combobox', { name: 'Playback detail' }).selectOption('highlights');
-  const landmark = page.getByRole('combobox', { name: 'Jump to landmark' });
-  await landmark.selectOption({ label: 'First take from right' });
+  await seekWatchCheckpoint(page, interviewDocument('interview:merge-sorted-array')!, 'First take from right');
   const cellAt = (row: string, pointer: string) => page.locator('.watch-canvas li').filter({
     has: page.locator('[data-topic-pointer="' + row + ':' + pointer + '"]'),
   }).locator('code');
@@ -70,7 +71,7 @@ test('walkthrough pointers follow their own arrays and slide with the window', a
   await expect(cellAt('other', 'right')).toHaveText('8');
 
   await page.goto('/#watch?lesson=minimum-size-subarray-sum');
-  await landmark.selectOption({ label: 'First expand' });
+  await seekWatchCheckpoint(page, interviewDocument('interview:minimum-size-subarray-sum')!, 'First expand');
   const window = page.locator('.watch-canvas [data-in-window="true"] code');
   await expect(window).toHaveText(['2']);
   await expect(cellAt('nums', 'right')).toHaveText('2');
@@ -92,10 +93,11 @@ test('walkthrough pointers follow their own arrays and slide with the window', a
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByRole('button', { name: 'Next event' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-pointer-moved', 'false');
-  await landmark.selectOption({ label: 'First shrink' });
+  await seekWatchCheckpoint(page, interviewDocument('interview:minimum-size-subarray-sum')!, 'First shrink');
   await expect(cellAt('nums', 'left')).toHaveText('1');
   await expect(window).toHaveText(['1', '5']);
-  await page.getByRole('button', { name: 'Inspect this moment' }).click();
+  await openWatchOptions(page);
+  await page.getByRole('button', { name: 'Inspect this step' }).click();
   await expect(page.locator('.inspect-results [data-in-window="true"] code')).toHaveText(['1', '5']);
 });
 
@@ -111,7 +113,7 @@ test('Watch all steps and fullscreen Inspect share the trace position and explan
   await expect(detail).toHaveValue('steps');
   await expect(watch).toHaveValue('0');
   const last = await watch.getAttribute('max');
-  await page.getByRole('combobox', { name: 'Jump to landmark' }).selectOption({ label: 'First expand' });
+  await seekWatchCheckpoint(page, interviewDocument('interview:minimum-size-subarray-sum')!, 'First expand');
   const expanded = Number(await watch.inputValue());
   await page.getByRole('button', { name: 'Next step', exact: true }).click();
   await expect(watch).toHaveValue(String(expanded + 1));
@@ -124,7 +126,8 @@ test('Watch all steps and fullscreen Inspect share the trace position and explan
   await detail.selectOption('steps');
   await expect(watch).toHaveValue(String(expanded + 1));
 
-  await page.getByRole('button', { name: 'Inspect this moment' }).click();
+  await openWatchOptions(page);
+  await page.getByRole('button', { name: 'Inspect this step' }).click();
   const inspect = page.getByRole('slider', { name: 'Playback step' });
   await expect(inspect).toHaveAttribute('max', last!);
   await expect(inspect).toHaveValue(String(expanded + 1));
@@ -162,8 +165,8 @@ for (const start of [0, 25, 50, 75, 100, 125]) {
       await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Watch', exact: true }).click();
       await expect(page).toHaveURL(new RegExp('#watch\\?lesson=' + slug + '$'));
       await expect(page.getByRole('heading', { name: String(title), exact: true })).toBeVisible();
-      const landmark = page.getByRole('combobox', { name: 'Jump to landmark' });
-      await landmark.selectOption({ index: 1 });
+      const document = interviewDocument('interview:' + slug)!;
+      let checkpoint = await seekWatchCheckpoint(page, document);
       if (slug === 'rotate-image') {
         await expect(page.getByRole('table', { name: 'matrix', exact: true })).toBeVisible();
         await expect(page.locator('.watch-canvas .topic-grid td[data-active="true"]')).toHaveCount(2);
@@ -182,7 +185,7 @@ for (const start of [0, 25, 50, 75, 100, 125]) {
         await expect(page.getByRole('img', { name: 'Node links' }).locator('.linked-edge[data-active="true"]')).toHaveCount(2);
       }
       if (slug === 'design-add-and-search-words-data-structure') {
-        await landmark.selectOption({ label: 'First try wildcard branch' });
+        checkpoint = await seekWatchCheckpoint(page, document, 'First try wildcard branch');
       }
       if (slug === 'implement-trie-prefix-tree' || slug === 'design-add-and-search-words-data-structure') {
         await expect(page.getByRole('img', { name: 'Prefix tree' }).locator('g[data-active="true"]')).toHaveCount(1);
@@ -191,9 +194,9 @@ for (const start of [0, 25, 50, 75, 100, 125]) {
         await expect(page.getByRole('table', { name: 'board', exact: true }).locator('td')).toHaveCount(6);
       }
       if (slug === 'permutations') {
-        await landmark.selectOption({ label: 'First save permutation' });
+        checkpoint = await seekWatchCheckpoint(page, document, 'First save permutation');
         await expect(page.getByRole('img', { name: 'Call tree', exact: true })).toHaveCount(0);
-        await page.getByText('View details', { exact: true }).click();
+        await openWatchOptions(page);
         const calls = page.getByRole('checkbox', { name: 'Call tree' });
         await calls.check();
         const tree = page.getByRole('img', { name: 'Call tree', exact: true });
@@ -203,7 +206,7 @@ for (const start of [0, 25, 50, 75, 100, 125]) {
       }
       if (slug === 'search-insert-position') {
         await expect(page.locator('.watch-canvas .topic-cells [data-active="true"] code')).toHaveText('5');
-        await landmark.selectOption({ label: 'First keep candidate' });
+        checkpoint = await seekWatchCheckpoint(page, document, 'First keep candidate');
         await expect(page.locator('.watch-canvas .topic-cells [data-outside="true"] code')).toHaveText(['5', '6']);
       }
       if (slug === 'kth-largest-element-in-an-array') {
@@ -219,12 +222,12 @@ for (const start of [0, 25, 50, 75, 100, 125]) {
         await expect(table.locator('td[data-active="true"]')).toHaveText('1');
         await expect(table.locator('td[data-related="true"]')).toHaveCount(3);
       }
-      const checkpoint = await landmark.inputValue();
       const caption = await page.locator('.watch-caption:visible').innerText();
-      await page.getByRole('button', { name: 'Inspect this moment' }).click();
+      await openWatchOptions(page);
+      await page.getByRole('button', { name: 'Inspect this step' }).click();
       await expect(page).toHaveURL(new RegExp('#inspect\\?lesson=' + slug + '$'));
       const raw = page.getByRole('slider', { name: 'Playback step' });
-      await expect(raw).toHaveValue(checkpoint);
+      await expect(raw).toHaveValue(String(checkpoint));
       await expect(page.locator('.step-note')).toContainText(caption);
       if (slug === 'maximal-square') {
         await expect(page.getByRole('table', { name: 'sizes', exact: true }).locator('td[data-related="true"]')).toHaveCount(3);

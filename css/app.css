@@ -172,7 +172,7 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; width: 15px; he
 .variable-snapshot { min-width: 0; min-height: 0; overflow: auto; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
 .variable-snapshot h3 { font-size: 13px; margin: 0 0 6px; }
 .variable-snapshot :is(dl, p, dt, dd) { margin: 0; }
-.variable-snapshot dl > div { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 7px; border-top: 1px solid var(--line); padding: 6px 0; }
+.variable-snapshot dl > div { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr) auto; align-items: start; gap: 7px; border-top: 1px solid var(--line); padding: 6px 0; }
 .variable-snapshot :is(dt, dd) { overflow-wrap: anywhere; }
 .variable-snapshot dt { font-weight: 650; }
 .variable-snapshot .change-dot { display: inline-block; margin-right: 4px; }
@@ -226,13 +226,7 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; width: 15px; he
 .scrub-wrap input { display: block; appearance: none; width: 100%; height: 6px; margin: 5px 0; border-radius: 9px; background: linear-gradient(90deg, var(--accent) var(--progress), var(--line) var(--progress)); }
 .scrub-wrap input::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); cursor: ew-resize; }
 .scrub-wrap input::-moz-range-thumb { width: 13px; height: 13px; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.event-markers { position: absolute; inset: 0 7px auto; height: 10px; pointer-events: none; }
-.event-marker { position: absolute; width: 9px; height: 10px; transform: translateX(-50%); border: 0; padding: 0; background: transparent; pointer-events: auto; }
-.event-marker::before { display: block; content: ''; width: 5px; height: 5px; margin: auto; border-radius: 50%; background: var(--accent); }
-.event-marker.exception::before { background: var(--bad); border-radius: 1px; transform: rotate(45deg); }
-.event-marker.output::before { background: var(--warning); }
 select { color: var(--ink); background: var(--panel-soft); border: 1px solid var(--line); border-radius: 5px; padding: 3px 5px; }
-.event-menu select { max-width: 130px; font-size: 11px; padding: 1px 4px; }
 .speed { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mu); }
 .speed select { font-size: 12px; min-height: 30px; }
 
@@ -304,3 +298,11 @@ select { color: var(--ink); background: var(--panel-soft); border: 1px solid var
   .app-shell:not(.is-watching) .examples-popover > summary > span,
   .app-shell:not(.is-watching) .mode-button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 }
+
+.variable-snapshot-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.variable-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; border-bottom: 1px solid var(--line); align-items: center; }
+.variable-row .variable { border-bottom: 0; }
+.variable-hide { display: grid; place-items: center; width: 26px; min-height: 26px; padding: 0; border-radius: 5px; border: 0; color: var(--bad); background: transparent; }
+.variable-hide:hover { background: var(--bad-soft); }
+.variable-restore { padding: 4px 6px; border: 0; border-radius: 4px; color: var(--accent); background: transparent; font-size: 12px; }
+.variable-restore:hover { background: var(--accent-soft); }

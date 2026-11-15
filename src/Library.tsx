@@ -39,9 +39,9 @@ export function Library({ active, onExample, onWrite, onInterview }: { active: b
     <section className="library-intro">
       <div className="library-lead">
         <h2 id="library-title" tabIndex={-1}>See Python<br />step by step.</h2>
-        <p>Watch an algorithm make decisions, or bring your own code and follow the changes it makes.</p>
+        <p>Run Python, see what it prints, and watch how arrays, trees, and other data structures change as your code runs.</p>
         <div className="library-start">
-          <button className="button primary" type="button" onClick={onWrite}><CodeXml />Write Python</button>
+          <button className="button primary" type="button" onClick={onWrite}><CodeXml />Open custom code</button>
           <a className="button neutral" href="#interview" onClick={event => { event.preventDefault(); onInterview(); }}>Top Interview 150</a>
           <a className="button library-anchor" href="#library-examples" onClick={event => {
             event.preventDefault();
@@ -50,7 +50,7 @@ export function Library({ active, onExample, onWrite, onInterview }: { active: b
           }}>Browse examples<ArrowDown /></a>
         </div>
       </div>
-      <button className="library-feature" type="button" aria-label="Open Bubble sort in Write" onClick={() => onExample('Bubble sort')}>
+      <button className="library-feature" type="button" aria-label="Open Bubble sort code" onClick={() => onExample('Bubble sort')}>
         <span className="feature-heading"><span>Bubble sort</span><span className="feature-open"><ArrowUpRight size={17} /></span></span>
         <span className="feature-plot" aria-hidden="true">
           {[5, 2, 9, 1, 6].map((value, index) => <span className="feature-bar" key={value} data-compare={index < 2} style={{ height: (value + 2) * 9 + '%' }}>{value}</span>)}
@@ -59,7 +59,7 @@ export function Library({ active, onExample, onWrite, onInterview }: { active: b
       </button>
     </section>
     <section className="library-examples" id="library-examples" tabIndex={-1} aria-labelledby="examples-title">
-      <div className="catalog-heading"><div><h3 id="examples-title">Example library</h3><p>Pick an example to open its code in Write.</p></div>
+      <div className="catalog-heading"><div><h3 id="examples-title">Example library</h3><p>Pick an algorithm to open its Python code.</p></div>
         <label className="catalog-search"><Search size={17} /><span className="sr-only">Filter examples</span>
           <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find an algorithm" /></label>
       </div>

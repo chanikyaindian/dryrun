@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { openWatchOptions } from './watch-helpers';
 import { SAMPLES } from '../js/samples.js';
 
 const player = (page: Page) => page.locator('.watch-player');
@@ -6,7 +7,7 @@ const timeline = (page: Page) => page.getByRole('slider', { name: 'Watch event' 
 const next = (page: Page) => player(page).getByRole('button', { name: 'Next event' });
 const inspect = (page: Page) => page.locator('header').getByRole('button', { name: 'Inspect', exact: true });
 async function openExample(page: Page, name: string) {
-  await page.locator('header').getByRole('button', { name: name === 'My code' ? 'Write' : 'Examples', exact: true }).click();
+  await page.locator('header').getByRole('button', { name: name === 'My code' ? 'Custom code' : 'Examples', exact: true }).click();
   if (name !== 'My code') {
     await page.getByRole('button', { name, exact: true }).click();
     await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Watch', exact: true }).click();
@@ -51,7 +52,8 @@ print(reverse_string("hello"))  # Output: "olleh"`);
   }
   await timeline(page).press('End');
   await expect(result(canvas).locator('code')).toHaveText([... 'olleh']);
-  await player(page).getByRole('button', { name: 'Inspect this moment' }).click();
+  await openWatchOptions(page);
+  await player(page).getByRole('button', { name: 'Inspect this step' }).click();
   const stage = page.locator('#stage');
   await expect(result(stage).locator('code')).toHaveText([... 'olleh']);
   await page.getByRole('slider', { name: 'Playback step' }).press('Home');
@@ -101,7 +103,7 @@ test('default Watch hides debugging chrome and Inspect opens at the same line', 
   await expect(raw).toHaveValue(String(index + 1));
 });
 
-test('fullscreen fallback hides captions and returns focus and position', async ({ page }) => {
+test('fullscreen fallback keeps the caption and returns focus and position', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(Element.prototype, 'requestFullscreen', { value: () => Promise.reject(Error('Unavailable')) });
   });
@@ -114,10 +116,8 @@ test('fullscreen fallback hides captions and returns focus and position', async 
   const index = await timeline(page).inputValue();
   await player(page).getByRole('button', { name: 'Fullscreen', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Algorithm player' })).toBeVisible();
-  await expect(player(page).locator('.watch-caption')).toHaveCount(0);
-  await expect(player(page)).toHaveAttribute('data-controls', 'false', { timeout: 5000 });
-  await page.keyboard.press('Tab');
-  await expect(player(page)).toHaveAttribute('data-controls', 'true');
+  await expect(player(page).locator('.watch-caption')).toHaveText(/^Compare/);
+  await expect(player(page).getByRole('button', { name: 'Playback options' })).toBeInViewport();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Algorithm player' })).toHaveCount(0);
   await expect(timeline(page)).toHaveValue(index);
@@ -274,22 +274,21 @@ test('desktop backtracking connects the first save and undo to the raw trace', a
   const currentPath = surface.getByRole('region', { name: 'Current path' });
   const candidates = surface.getByRole('region', { name: 'Candidates' });
   const saved = surface.getByRole('region', { name: 'Saved paths' });
-  const jump = surface.getByRole('combobox', { name: 'Jump to landmark' });
   const tree = surface.getByRole('img', { name: 'Call tree' });
   await expect(surface.locator('[data-scene="backtracking"]')).toBeVisible();
   await expect(tree).toHaveCount(0);
   await findBeat(page, /Skip 1 because it’s already in the path/);
   await expect(candidates.locator('[data-used="true"]')).toHaveText('1Used');
-  await jump.selectOption({ label: 'First complete path' });
+  await findBeat(page, /Save a copy of/);
   await expect(caption).toHaveText('Save a copy of [1, 2, 3].');
   await expect(currentPath.locator('h3 code')).toHaveText('[1, 2, 3]');
-  await jump.selectOption({ label: 'First undo' });
+  await findBeat(page, /Undo 3 and make it available again/);
   await expect(caption).toHaveText('Undo 3 and make it available again.');
   await expect(currentPath.locator('h3 code')).toHaveText('[1, 2]');
   await expect(saved.locator('li')).toHaveText('[1, 2, 3]');
   await expect(candidates.locator('[data-used="false"]')).toHaveText('3Available');
 
-  await surface.getByText('View details', { exact: true }).click();
+  await openWatchOptions(page);
   await surface.getByRole('checkbox', { name: 'Call tree' }).check();
   await expect(tree.locator('.watch-call text')).toContainText(['[1, 2]']);
   await surface.getByRole('checkbox', { name: 'Call stack' }).check();
@@ -303,7 +302,8 @@ test('desktop backtracking connects the first save and undo to the raw trace', a
   await expect(surface.getByRole('button', { name: 'Exit fullscreen' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(surface.getByRole('button', { name: 'Fullscreen', exact: true })).toBeFocused();
-  await surface.getByRole('button', { name: 'Inspect this moment' }).click();
+  await openWatchOptions(page);
+  await surface.getByRole('button', { name: 'Inspect this step' }).click();
   await expect(page.getByRole('slider', { name: 'Playback step' })).toHaveValue('39');
   await expect(page.locator('.step-note')).toContainText('Undo 3 and make it available again.');
   await expect(page.locator('.cm-execution-gutter')).toHaveCount(0);
@@ -312,7 +312,8 @@ test('desktop backtracking connects the first save and undo to the raw trace', a
   await page.locator('header').getByRole('button', { name: 'Watch', exact: true }).click();
   await timeline(page).press('End');
   await expect(saved.locator('.decision-count')).toHaveText('6');
-  await surface.getByRole('button', { name: 'Open printed output' }).click();
+  await openWatchOptions(page);
+  await surface.getByRole('button', { name: 'View output' }).click();
   await expect(page.locator('.output-block pre')).toContainText('[[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]');
 });
 
@@ -406,6 +407,6 @@ test('compact layouts keep graph controls and editor navigation inside the viewp
   await expect(player(page).getByRole('button', { name: 'Fullscreen', exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   await inspect(page).click();
-  await expect(page.locator('header').getByRole('button', { name: 'Write', exact: true })).toBeInViewport();
+  await expect(page.locator('header').getByRole('button', { name: 'Custom code', exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 });

@@ -17,7 +17,7 @@
   --watch-accent: var(--accent); --watch-edge: var(--plot-line); --watch-line: var(--line); --watch-amber: var(--cue-line);
 }
 [data-theme="dark"] .watch-canvas:is([data-scene="backtracking"], [data-scene="topic"]) { background: var(--bg); }
-[data-theme="dark"] :is(.canvas-label, .watch-dock, .fullscreen-operation, .watch-table, .watch-values li, .decision-tree, .array-target code),
+[data-theme="dark"] :is(.watch-dock, .watch-table, .watch-values li, .decision-tree, .array-target code),
 [data-theme="dark"] .editor-pane > :is(.pane-header, .editor-footer) { background: var(--surface); }
 [data-theme="dark"] :is(.watch-speed, .watch-step, .watch-queue li, .watch-matrix td, .decision-tiles > li[data-used="true"], .topic-lane) {
   background: var(--panel-soft); color: var(--ink);
@@ -30,6 +30,7 @@
   background: var(--cue-soft); color: var(--ink); border-color: var(--cue-line);
 }
 [data-theme="dark"] :is(.array-slot[data-changed="true"] .array-glyph, .watch-matrix td[data-cue]) { background: var(--hl); color: #192347; }
+[data-theme="dark"] :is(.watch-queue li[data-cue], .watch-table tr[data-cue] > *, .watch-values li[data-cue]) { background: var(--hl); color: #192347; }
 [data-theme="dark"] :is(.watch-node:not([data-active="true"]) circle, .watch-call:not([data-active="true"]) rect, .linked-node:not([data-active="true"]) rect, .topic-tree rect) { fill: var(--surface); }
 [data-theme="dark"] .watch-node[data-processed="true"][data-active="false"][data-queued="false"] circle { fill: var(--bar); }
 [data-theme="dark"] .linked-node[data-active="true"] text { fill: #192347; }

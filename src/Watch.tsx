@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { ChevronLeft, ChevronRight, CodeXml, ListTree, Maximize, Minimize, Minus, Pause, Play, Plus, RotateCcw, Settings2, Variable } from 'lucide-react';
 import { rp } from '../js/views/basic.js';
 import { kind, netOf, pointLayout } from '../js/views/structures.js';
-import { beatPosition, isAtom, linkedNodes, matrixRows, readIndices, scopeValue, searchState, watchLandmarks, type Beat, type Network, type Scene } from './watchModel';
+import { beatPosition, isAtom, linkedNodes, matrixRows, readIndices, scopeValue, searchState, type Beat, type Network, type Scene } from './watchModel';
 import type { Replay, Step } from './workspace';
 import { Prediction } from './Prediction';
 import { DecisionState } from './DecisionState';
@@ -10,7 +10,6 @@ import { decisionLocation } from './backtracking';
 import { TopicPanel } from './TopicPanel';
 import type { TopicEvent } from './topicModel';
 import { narrateStep } from './stepNarration';
-import { exampleDescription } from './Library';
 import { CallTree } from './CallTree';
 import { VariableSnapshot } from './VariableSnapshot';
 
@@ -321,19 +320,18 @@ type Props = {
   onInspect: (output?: boolean) => void;
   showTree: boolean; showStack: boolean; desktop: boolean;
   showVariables: boolean;
-  showFullscreenVariables: boolean; onFullscreenVariables: () => void;
+  hiddenVariables: ReadonlySet<string>; onHideVariable: (name: string) => void; onRestoreVariables: () => void;
   onTree: () => void; onStack: () => void; onVariables: () => void;
 };
 
 export function Watch({ active, replay, index, playing, motion, speed, onMove, onSeek, onPlay, onFullscreen, onSpeed, onWrite, onInterview, onExamples,
-  onPause, onInspect, allSteps, onDetail, showTree, showStack, showVariables, showFullscreenVariables, onFullscreenVariables, desktop, onTree, onStack, onVariables }: Props) {
+  onPause, onInspect, allSteps, onDetail, showTree, showStack, showVariables, hiddenVariables, onHideVariable, onRestoreVariables, desktop, onTree, onStack, onVariables }: Props) {
   const surface = useRef<HTMLElement>(null);
+  const settings = useRef<HTMLDetailsElement>(null);
   const expand = useRef<HTMLButtonElement>(null);
   const native = useRef(false);
   const requested = useRef(false);
-  const timer = useRef<number | undefined>(undefined);
   const [full, setFull] = useState(false);
-  const [revealed, setRevealed] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [fitTree, setFitTree] = useState(true);
   const beats = replay?.watch.beats ?? [];
@@ -341,14 +339,7 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
   const scene = replay?.watch.scene;
   const model = replay?.watch.backtracking;
   const topic = replay?.watch.topic;
-  const central = Boolean(model || topic);
-  const sceneTitle = scene?.shape === 'points' ? 'Coordinate plot' : scene?.shape === 'iv' ? 'Intervals' :
-    scene?.kind === 'search' ? 'Binary search' : scene?.kind === 'queue' ? 'Queue' : scene?.kind === 'graph' ? 'Graph traversal' :
-    scene?.kind === 'backtracking' ? 'Backtracking' : scene?.kind === 'recursion' ? 'Recursion' : scene?.kind === 'grid' ? 'Grid' : scene?.kind === 'array' ? 'Array' :
-    scene?.kind === 'linked' ? 'Node links' : 'Execution';
-  const sampleTitle = replay && replay.source.key !== 'my-code' ? replay.source.title ?? replay.source.key : '';
-  const description = replay?.source.description ?? (sampleTitle ? exampleDescription(sampleTitle) : undefined);
-  const title = sampleTitle.replace(/ \(backtracking\)$/i, '') || topic?.name || sceneTitle;
+  const title = replay?.source.title ?? (replay?.source.key === 'my-code' ? topic?.name ?? 'Watch' : replay?.source.key ?? 'Watch');
   const position = beatPosition(beats, index);
   const nearest = beats[position];
   const beat = nearest?.index === index ? nearest : undefined;
@@ -385,30 +376,24 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
   const showingTree = hasTree && showTree;
   const canZoom = scene?.kind === 'graph' || showingTree;
   const processed = scene?.kind === 'graph' ? beats.slice(0, position + 1).filter(event => event.kind === 'dequeue').map(event => event.node) : [];
-  const landmarks = useMemo(() => watchLandmarks(replay?.watch.beats ?? []), [replay]);
-  const showControls = () => {
-    setRevealed(true);
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setRevealed(false), 2400);
-  };
   const leave = () => {
+    settings.current?.removeAttribute('open');
     const node = surface.current;
     const ownsFullscreen = node && document.fullscreenElement === node;
     native.current = false;
     requested.current = false;
     setFull(false);
     onFullscreen(false);
-    window.clearTimeout(timer.current);
     if (ownsFullscreen) void document.exitFullscreen().catch(() => {});
     requestAnimationFrame(() => expand.current?.focus());
   };
   const enter = () => {
     const node = surface.current;
     if (!node) return;
+    settings.current?.removeAttribute('open');
     requested.current = true;
     setFull(true);
     onFullscreen(true);
-    showControls();
     requestAnimationFrame(() => node.focus({ preventScroll: true }));
     void node.requestFullscreen?.().then(() => {
       if (document.fullscreenElement !== node) return;
@@ -418,17 +403,29 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
   };
   useEffect(() => { setZoom(1); setFitTree(true); }, [replay?.id]);
   useEffect(() => {
+    if (!active) {
+      settings.current?.removeAttribute('open');
+      return;
+    }
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !settings.current?.contains(event.target)) settings.current?.removeAttribute('open');
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [active]);
+  useEffect(() => {
     if (!full) return;
     const change = () => {
       if (document.fullscreenElement === surface.current) native.current = true;
       else if (native.current) leave();
     };
     const key = (event: KeyboardEvent) => {
-      showControls();
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') { event.preventDefault(); leave(); }
       if (event.key === 'Tab') {
         const controls = [...(surface.current?.querySelectorAll<HTMLElement>(
-          '.fullscreen-variables, .fullscreen-variables select, .watch-dock :is(button, input, select):not(:disabled)') ?? [])];
+          '.watch-player [tabindex="0"], .watch-player :is(button, input, select, summary, a[href]):not(:disabled)') ?? [])]
+          .filter(element => element.getClientRects().length > 0);
         const first = controls[0], last = controls.at(-1);
         const target = document.activeElement;
         if (!first || !last) return;
@@ -441,7 +438,6 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
     return () => {
       document.removeEventListener('fullscreenchange', change);
       document.removeEventListener('keydown', key);
-      window.clearTimeout(timer.current);
     };
   }, [full, onFullscreen]);
 
@@ -453,71 +449,48 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
   </div>;
 
   return <main className={'watch-player' + (full ? ' watch-fullscreen' : '')} ref={surface} hidden={!active}
-    tabIndex={full ? -1 : undefined} role={full ? 'dialog' : undefined} aria-modal={full || undefined} aria-label="Algorithm player"
-    data-controls={revealed} data-playing={playing} data-all-steps={allSteps} data-variables-open={full && showFullscreenVariables || undefined}
-    onPointerMove={full ? showControls : undefined} onPointerDown={full ? showControls : undefined}>
-    {!full && <aside className="watch-rail" aria-label="Current operation">
-      <div className={'watch-heading' + (replay?.source.lesson ? ' interview-watch-heading' : '')}>
-        {model && sampleTitle && <span className="watch-topic">Backtracking</span>}
-        <h2 tabIndex={-1}>{title}</h2>
-        {description && <p>{description}</p>}
-      </div>
-      {!desktop && caption}
-      {replay && <div className="watch-actions">
-        <button type="button" className="button primary compact" onClick={() => onInspect()}><ListTree />Inspect this moment</button>
-        {replay.source.key !== 'my-code' && <a className="button neutral compact" href={replay.source.key.startsWith('interview:') ? '#interview' : '#library'}
-          onClick={event => { event.preventDefault(); (replay.source.key.startsWith('interview:') ? onInterview : onExamples)(); }}>
-          {replay.source.key.startsWith('interview:') ? 'Back to study plan' : 'Back to examples'}</a>}
-        {canOpenOutput && (!central || !desktop) && <button type="button" className="button neutral compact" onClick={() => onInspect(true)}>Open printed output</button>}
-        <details className="watch-view">
-          <summary><Settings2 size={15} />View details</summary>
-          {hasTree && <label><input type="checkbox" checked={showTree} onChange={onTree} />Call tree</label>}
-          <label><input type="checkbox" checked={showStack} onChange={onStack} />Call stack</label>
-          <label><input type="checkbox" checked={showVariables} onChange={onVariables} />Variables</label>
-          <small>{hasTree ? 'Call tree and stack settings also apply in Inspect.' : 'Call stack settings also apply in Inspect.'}</small>
-        </details>
-      </div>}
-      {showVariables && <VariableSnapshot key={'variables:' + replay?.id} label="Watch variables" step={step} previous={replay?.steps[index - 1]} />}
-      {desktop && showStack && step && <ol className="watch-stack" aria-label="Call stack">
-        {step.F.slice().reverse().map((frame, i) => <li key={i}><code>{frame.n === '<module>' ? 'Main program' : frame.n + '()'}</code>{i === 0 && <span>Active</span>}</li>)}
-      </ol>}
-      {active && replay && !allSteps && <Prediction key={replay.id} replay={replay} index={index} onPause={onPause} onReveal={() => onMove(1)} />}
-      <button className="button write-python" type="button" onClick={onWrite}><CodeXml />Write Python</button>
-    </aside>}
+    tabIndex={-1} role={full ? 'dialog' : undefined} aria-modal={full || undefined} aria-label="Algorithm player"
+    data-sidebar={showVariables || showStack || undefined}>
     <div className="watch-canvas" data-scene={scene?.kind} data-moving={motion}>
-      {!full && scene && !central && <div className="canvas-label"><span className="plot-mark" aria-hidden="true" />{scene.name === title ? sceneTitle : scene.name}</div>}
-      {full && desktop && !central && <div className="fullscreen-operation">{caption}</div>}
       <div className="scene-body">
+        <div className="watch-step-panel">
+          <h2 className="sr-only">{title}</h2>
+          {caption}
+        </div>
         <div className="scene-stack">
-          {!full && desktop && !central && <div className="watch-stage-operation">{caption}</div>}
           {!replay || !scene || !sceneStep ? <p className="scene-empty">Run Python code to start playback.</p> :
             scene.kind === 'array' || scene.kind === 'search' ? <ArrayScene replay={replay} step={sceneStep} beat={beat} moving={motion} speed={speed} allSteps={allSteps} /> :
             scene.kind === 'queue' ? <QueueScene queue={sceneStep.H[scene.id!]?.v ?? []} beat={beat} /> :
             scene.kind === 'graph' ? <GraphScene scene={scene} step={sceneStep} current={replay.watch.currentNodes.get(index)} processed={processed} beat={beat} moving={motion} speed={speed} zoom={zoom} /> :
             scene.kind === 'linked' ? <LinkedScene scene={scene} step={sceneStep} beat={beat} moving={motion} speed={speed} /> :
             model ? <div className="decision-lesson">
-              {desktop && caption}
               <DecisionState model={model} index={index} decision={beat?.decision} moving={motion} />
               {showingTree && <div className="decision-tree"><h3>Call tree</h3><CallTree replay={replay} index={index} beat={beat} moving={motion} speed={speed} zoom={zoom} fit={fitTree} /></div>}
-              {!full && desktop && canOpenOutput && <button type="button" className="button neutral compact" onClick={() => onInspect(true)}>Open printed output</button>}
             </div> :
             topicView ? <div className="decision-lesson">
-              {desktop && caption}
               {showingTree ? <div className="decision-tree"><h3>Call tree</h3><CallTree replay={replay} index={index} beat={beat} moving={motion} speed={speed} zoom={zoom} fit={fitTree} /></div> : <>
                 {scene.nodeClass && <LinkedScene scene={scene} step={sceneStep} beat={beat} moving={motion} speed={speed}
                   pointers={topicView.nodePointers} changes={topicCue?.nodeLinks} />}
                 {topicReady ? <TopicPanel view={topicView} cue={topicCue} motion={motion} speed={speed} showKey /> :
                   <p className="scene-empty">The visual state appears as the program creates values.</p>}
               </>}
-              {!full && desktop && canOpenOutput && <button type="button" className="button neutral compact" onClick={() => onInspect(true)}>Open printed output</button>}
             </div> : scene.kind === 'recursion' ? showingTree ? <CallTree replay={replay} index={index} beat={beat} moving={motion} speed={speed} zoom={zoom} fit={fitTree} />
               : <p className="scene-empty">Call tree hidden. The current operation is shown alongside playback.</p> :
             <ValueScene replay={replay} scene={scene} step={sceneStep} beat={beat} moving={motion} speed={speed} />}
         </div>
       </div>
     </div>
-    {full && showFullscreenVariables && <VariableSnapshot key={'fullscreen-variables:' + replay?.id} id="watch-fullscreen-variables" label="Watch fullscreen variables"
-      fullscreen step={step} previous={replay?.steps[index - 1]} />}
+    {(showVariables || showStack) && <aside className="watch-sidebar" aria-label="Playback state">
+      {showVariables && <VariableSnapshot key={replay?.id} id="watch-variables" label="Watch variables"
+        step={step} previous={replay?.steps[index - 1]} hiddenVariables={hiddenVariables}
+        onHideVariable={onHideVariable} onRestoreVariables={onRestoreVariables} />}
+      {showStack && step && <section className="watch-stack-panel" aria-label="Call stack">
+        <h3>Call stack</h3>
+        <ol className="watch-stack" aria-label="Call stack">
+          {step.F.slice().reverse().map((frame, i) => <li key={i}><code>{frame.n === '<module>' ? 'Main program' : frame.n + '()'}</code>{i === 0 && <span>Active</span>}</li>)}
+        </ol>
+      </section>}
+    </aside>}
     <div className="watch-dock" aria-label="Watch playback">
       <button type="button" className="watch-icon watch-step" title={allSteps ? 'Previous step' : 'Previous event'} aria-label={allSteps ? 'Previous step' : 'Previous event'} disabled={!count || index <= first} onClick={() => onMove(-1)}><ChevronLeft /></button>
       <button type="button" className="watch-play" aria-label={playing ? 'Pause' : done && canPlay ? 'Replay' : 'Play'} disabled={!canPlay} onClick={onPlay}>
@@ -531,11 +504,6 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
       <select className="watch-detail" aria-label="Playback detail" value={allSteps ? 'steps' : 'highlights'} onChange={event => onDetail(event.target.value === 'steps')}>
         <option value="steps">All steps</option><option value="highlights">Highlights</option>
       </select>
-      {desktop && landmarks.size > 0 && <select className="watch-landmarks" aria-label="Jump to landmark" value={landmarks.has(index) ? index : ''}
-        onChange={event => { if (event.target.value) onSeek(Number(event.target.value)); }}>
-        <option value="">Landmarks</option>
-        {[...landmarks].map(([at, label]) => <option key={at} value={at}>{label}</option>)}
-      </select>}
       <select className="watch-speed" aria-label="Playback speed" value={speed} onChange={event => onSpeed(Number(event.target.value))}>
         <option value={1000}>Slow</option><option value={560}>Normal</option><option value={240}>Fast</option>
       </select>
@@ -550,9 +518,28 @@ export function Watch({ active, replay, index, playing, motion, speed, onMove, o
           setZoom(value => Math.min(2, value + .25));
         }}><Plus /></button>
       </div>}
-      {full && <button type="button" className="watch-icon fullscreen-variable-toggle" aria-label="Show variables" title="Show variables"
-        aria-pressed={showFullscreenVariables} aria-controls={showFullscreenVariables ? 'watch-fullscreen-variables' : undefined}
-        onClick={onFullscreenVariables}><Variable />{desktop && <span>Variables</span>}</button>}
+      <button type="button" className="watch-icon fullscreen-variable-toggle" aria-label="Show variables" title="Show variables"
+        disabled={!step} aria-pressed={showVariables} aria-controls={showVariables ? 'watch-variables' : undefined}
+        onClick={onVariables}><Variable />{desktop && <span>Variables</span>}</button>
+      <details className="watch-view" ref={settings} onKeyDown={event => {
+        if (event.key !== 'Escape' || !event.currentTarget.open) return;
+        event.preventDefault();
+        event.currentTarget.open = false;
+        event.currentTarget.querySelector('summary')?.focus();
+      }}>
+        <summary className="watch-icon" role="button" aria-label="Playback options" title="Playback options"><Settings2 /></summary>
+        <div className="watch-view-menu">
+          {replay && <button type="button" className="button neutral compact" onClick={() => { if (full) leave(); onInspect(); }}><ListTree />Inspect this step</button>}
+          {canOpenOutput && <button type="button" className="button neutral compact" onClick={() => { if (full) leave(); onInspect(true); }}>View output</button>}
+          {hasTree && <label><input type="checkbox" checked={showTree} onChange={onTree} />Call tree</label>}
+          <label><input type="checkbox" checked={showStack} onChange={onStack} />Call stack</label>
+          {!full && replay && !allSteps && <Prediction key={replay.id} replay={replay} index={index} onPause={onPause} onReveal={() => onMove(1)} />}
+          {replay && replay.source.key !== 'my-code' && <a className="button neutral compact" href={replay.source.key.startsWith('interview:') ? '#interview' : '#library'}
+            onClick={event => { event.preventDefault(); if (full) leave(); (replay.source.key.startsWith('interview:') ? onInterview : onExamples)(); }}>
+            {replay.source.key.startsWith('interview:') ? 'Back to study plan' : 'Back to examples'}</a>}
+          <button type="button" className="button neutral compact" onClick={() => { if (full) leave(); onWrite(); }}><CodeXml />Custom code</button>
+        </div>
+      </details>
       {full ? <button type="button" className="watch-icon watch-exit" aria-label="Exit fullscreen" title="Exit fullscreen (Esc)" onClick={leave}><Minimize />{desktop && <span>Exit</span>}</button> :
         <button ref={expand} type="button" className="watch-icon" aria-label="Fullscreen" title="Fullscreen" disabled={!step} onClick={enter}><Maximize /></button>}
     </div>

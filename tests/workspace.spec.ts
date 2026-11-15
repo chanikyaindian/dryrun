@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openWatchOptions, seekWatchCheckpoint } from './watch-helpers';
+import { SAMPLES } from '../js/samples.js';
 
 const editor = (page: Page) => page.getByLabel('Python code', { exact: true });
 const slider = (page: Page) => page.getByRole('slider', { name: 'Playback step' });
@@ -8,7 +10,7 @@ async function inspect(page: Page) {
   if (await button.isVisible()) await button.click();
 }
 async function example(page: Page, name: string) {
-  await page.locator('header').getByRole('button', { name: name === 'My code' ? 'Write' : 'Examples', exact: true }).click();
+  await page.locator('header').getByRole('button', { name: name === 'My code' ? 'Custom code' : 'Examples', exact: true }).click();
   if (name !== 'My code') {
     await page.getByRole('button', { name, exact: true }).click();
     await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
@@ -62,10 +64,10 @@ test('desktop Watch variables, hidden visualization restore, theme, and Inspect 
   await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
   const watch = page.locator('.watch-player');
   await watch.getByRole('slider', { name: 'Watch event' }).press('End');
-  await watch.getByText('View details', { exact: true }).click();
-  await watch.getByRole('checkbox', { name: 'Variables', exact: true }).check();
+  await watch.getByRole('button', { name: 'Show variables', exact: true }).click();
   await expect(watch.getByRole('region', { name: 'Watch variables' })).toContainText('order');
-  await watch.getByRole('button', { name: 'Inspect this moment' }).click();
+  await openWatchOptions(page);
+  await watch.getByRole('button', { name: 'Inspect this step' }).click();
   const at = await slider(page).inputValue();
   const stage = page.locator('#stage');
   await expect(stage.locator('.obj:visible').first()).toBeVisible();
@@ -170,7 +172,8 @@ test('the main navbar toggle works across Examples, Watch, Inspect and Write', a
   await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
   await expect(page).toHaveURL(/#watch\?example=Bubble%20sort$/);
   await expect(header).toBeHidden();
-  await page.getByRole('button', { name: 'Inspect this moment' }).click();
+  await openWatchOptions(page);
+  await page.getByRole('button', { name: 'Inspect this step' }).click();
   await expect(page).toHaveURL(/#inspect\?example=Bubble%20sort$/);
   await expect(header).toBeHidden();
   await page.getByRole('button', { name: 'Edit a copy' }).click();
@@ -236,7 +239,7 @@ test('compact Inspect opens on the visuals and keeps drawing in fullscreen', asy
   await expect(cards.first()).toBeInViewport();
 });
 
-test('fullscreen variable panels follow playback and stay separate from normal views', async ({ page }) => {
+test('fullscreen variable panels follow playback and match normal Watch', async ({ page }) => {
   await offline(page);
   await page.addInitScript(() => {
     Object.defineProperty(Element.prototype, 'requestFullscreen', { value: () => Promise.reject(Error('Unavailable')) });
@@ -246,7 +249,7 @@ test('fullscreen variable panels follow playback and stay separate from normal v
   await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
   const watch = page.getByRole('dialog', { name: 'Algorithm player' });
   const watchToggle = watch.getByRole('button', { name: 'Show variables' });
-  const watchVars = watch.getByRole('region', { name: 'Watch fullscreen variables' });
+  const watchVars = watch.getByRole('region', { name: 'Watch variables' });
   await expect(watchToggle).toHaveAttribute('aria-pressed', 'false');
   await watchToggle.click();
   await expect(watchVars).toContainText('[5, 2, 9, 1, 6]');
@@ -254,9 +257,15 @@ test('fullscreen variable panels follow playback and stay separate from normal v
   await watch.getByRole('button', { name: 'Next event' }).click();
   await expect(watchVars).toContainText('[2, 5, 9, 1, 6]');
   await expect(watchVars.getByLabel('Changed')).toBeVisible();
+  await watchVars.getByRole('button', { name: 'Hide variable arr', exact: true }).click();
+  await expect(watchVars).not.toContainText('[2, 5, 9, 1, 6]');
+  await expect(watch.locator('.array-glyph')).toHaveCount(5);
+  await watchVars.getByRole('button', { name: 'Restore hidden', exact: true }).click();
+  await expect(watchVars).toContainText('[2, 5, 9, 1, 6]');
+  await expect(watch.getByRole('combobox', { name: 'Jump to landmark' })).toBeHidden();
   await expect(watch.getByRole('button', { name: 'Play', exact: true })).toBeInViewport();
   await watch.getByRole('button', { name: 'Exit fullscreen' }).click();
-  await expect(page.getByRole('region', { name: 'Watch variables', exact: true })).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Watch variables', exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Inspect fullscreen' }).click();
@@ -294,11 +303,7 @@ test('independent views, presets, and event navigation preserve playback', async
   await expect(page.getByRole('button', { name: 'Show inspector' })).toBeVisible();
   await page.getByRole('button', { name: 'Show inspector' }).click();
   await expect(page.getByRole('tabpanel')).toBeVisible();
-  const jump = page.getByLabel('Jump to event', { exact: true });
-  const call = jump.locator('option').filter({ hasText: 'Call fib' }).first();
-  const eventStep = (await call.getAttribute('value'))!;
-  await jump.selectOption(eventStep);
-  await expect(slider(page)).toHaveValue(eventStep);
+  await expect(page.getByLabel('Jump to event', { exact: true })).toBeHidden();
   await page.reload();
   await inspect(page);
   await page.getByText('View', { exact: true }).click();
@@ -363,12 +368,12 @@ test('mobile custom runs, retained draft, stale replay, syntax diagnostics', asy
   await page.getByRole('tab', { name: 'Output' }).click();
   await expect(page.getByRole('tabpanel')).toContainText('[1, 2, 3]');
   const originalStep = await slider(page).inputValue();
-  await page.locator('header').getByRole('button', { name: 'Write', exact: true }).click();
+  await page.locator('header').getByRole('button', { name: 'Custom code', exact: true }).click();
   await editor(page).fill('if True print(1)');
   await page.locator('header').getByRole('button', { name: 'Watch', exact: true }).click();
   await inspect(page);
   await expect(slider(page)).toHaveValue(originalStep);
-  await page.locator('header').getByRole('button', { name: 'Write', exact: true }).click();
+  await page.locator('header').getByRole('button', { name: 'Custom code', exact: true }).click();
   await expect(editor(page)).toContainText('if True print(1)');
   await writeActions(page).getByRole('button', { name: 'Watch', exact: true }).click();
   await expect(page.getByText(/Line 1, column .*SyntaxError/)).toBeVisible({ timeout: 90000 });
@@ -413,9 +418,10 @@ test('bundled lessons expose their key decision and finish with the offline engi
     await expect(page.getByRole('slider', { name: 'Watch event' })).toBeVisible();
     if (landmarks[sample]) {
       const [label, caption] = landmarks[sample];
-      await page.getByRole('combobox', { name: 'Jump to landmark' }).selectOption({ label });
+      await seekWatchCheckpoint(page, { key: sample, code: SAMPLES[sample] }, label);
       await expect(page.locator('.watch-caption:visible')).toContainText(caption);
-      await page.getByRole('button', { name: 'Inspect this moment' }).click();
+      await openWatchOptions(page);
+      await page.getByRole('button', { name: 'Inspect this step' }).click();
       await expect(page.locator('.step-note')).toContainText(caption);
     } else await inspect(page);
     await last(page);
@@ -429,7 +435,7 @@ test('live run and rapid seeking through a 3,600-step custom trace', async ({ pa
   await example(page, 'My code');
   await page.getByRole('checkbox', { name: 'Live run' }).check();
   await editor(page).fill('arr = [0]\nfor i in range(1800):\n    arr[0] = i\nprint(arr[0])');
-  await expect(page.getByText('Run ready', { exact: true })).toBeVisible({ timeout: 90000 });
+  await expect(page.getByRole('region', { name: 'Output', exact: true })).toContainText('1799', { timeout: 90000 });
   await inspect(page);
   await expect.poll(async () => Number(await slider(page).getAttribute('max')), { timeout: 90000 }).toBeGreaterThan(3600);
   const duration = await slider(page).evaluate(async (element: HTMLInputElement) => {

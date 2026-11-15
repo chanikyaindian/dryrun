@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { parseTrace } from '../js/engine/trace-boundary.js';
 
 async function inspectOutput(page: Page, source: string) {
-  await page.getByRole('button', { name: 'Write', exact: true }).click();
+  await page.getByRole('button', { name: 'Custom code', exact: true }).click();
   await page.getByRole('textbox', { name: 'Python code' }).fill(source);
   await expect(page.getByText('CPython 3.13.2', { exact: true })).toBeVisible({ timeout: 80000 });
   await page.getByRole('complementary', { name: 'Run your Python' }).getByRole('button', { name: 'Inspect', exact: true }).click();

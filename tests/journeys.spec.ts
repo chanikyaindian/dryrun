@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openWatchOptions } from './watch-helpers';
 
 const runActions = (page: Page) => page.getByRole('complementary', { name: 'Run your Python' });
 
@@ -34,41 +35,42 @@ test('the example catalog filters by topic and browser Back restores the search'
   await expect(page.locator('[data-scene="backtracking"]')).toBeVisible();
 });
 
-test('prediction reveals the next actual event and Inspect can jump between visits', async ({ page }) => {
+test('prediction reveals the next actual event and Inspect keeps the same step', async ({ page }) => {
   await page.context().route('https://cdn.jsdelivr.net/**', route => route.abort());
   await page.goto('/#watch');
   await page.getByRole('button', { name: 'Next event' }).click();
+  await openWatchOptions(page);
   await page.getByRole('button', { name: 'Predict next' }).click();
   await expect(page.getByText('What happens to the highlighted values?')).toBeVisible();
   await page.getByRole('button', { name: 'They swap' }).click();
   await expect(page.getByText('Correct', { exact: true })).toBeVisible();
   await expect(page.locator('.watch-caption')).toHaveText('Swap 5 and 2.');
   await page.locator('header').getByRole('button', { name: 'Inspect', exact: true }).click();
-  await page.getByText('Find line', { exact: true }).click();
-  const select = page.getByRole('combobox', { name: 'Executed line' });
-  await select.selectOption('5');
   const slider = page.getByRole('slider', { name: 'Playback step' });
-  const first = Number(await slider.inputValue());
-  await page.getByRole('button', { name: 'Next visit' }).click();
-  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(first);
-  await page.getByRole('button', { name: 'Previous visit' }).click();
-  await expect(slider).toHaveValue(String(first));
+  const current = Number(await slider.inputValue());
+  await page.getByRole('button', { name: 'Next step', exact: true }).click();
+  await expect(slider).toHaveValue(String(current + 1));
+  await expect(page.getByText('Find line', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('Jump to event', { exact: true })).toBeHidden();
 });
 
-test('the Write page orders its three run actions and protects the draft when editing a sample', async ({ page }) => {
+test('Custom code shows output and orders its run actions and protects the draft when editing a sample', async ({ page }) => {
   await page.context().route('https://cdn.jsdelivr.net/**', route => route.abort());
   await page.goto('/#write');
   const editor = page.getByLabel('Python code', { exact: true });
   const actions = page.getByRole('complementary', { name: 'Run your Python' });
-  await expect(actions.getByRole('button')).toHaveText(['Inspect fullscreen', 'Inspect', 'Watch']);
+  await expect(actions.getByRole('button')).toHaveText(['Run code', 'Inspect fullscreen', 'Inspect', 'Watch']);
   for (const action of await actions.getByRole('button').all()) await expect(action).toBeDisabled();
-  await expect(page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button')).toHaveText(['Examples', 'Write', 'Inspect', 'Inspect fullscreen', 'Watch']);
+  await expect(page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button')).toHaveText(['Examples', 'Custom code', 'Inspect', 'Inspect fullscreen', 'Watch']);
   await editor.fill('print("draft")');
   await expect(actions.getByRole('button', { name: 'Inspect', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Examples', exact: true }).click();
-  await page.getByRole('button', { name: 'Open Bubble sort in Write' }).click();
+  await page.getByRole('button', { name: 'Open Bubble sort code' }).click();
   await expect(page).toHaveURL(/#write\?example=Bubble%20sort$/);
   await expect(editor).toContainText('arr = [5, 2, 9, 1, 6]');
+  await actions.getByRole('button', { name: 'Run code', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Output', exact: true })).toContainText('[1, 2, 5, 6, 9]');
+  await expect(page).toHaveURL(/#write\?example=Bubble%20sort$/);
   await runActions(page).getByRole('button', { name: 'Inspect', exact: true }).click();
   const edit = page.getByRole('button', { name: 'Edit a copy' });
   await edit.click();
@@ -81,11 +83,11 @@ test('the Write page orders its three run actions and protects the draft when ed
   await page.reload();
   await expect(editor).toContainText('arr = [5, 2, 9, 1, 6]');
   await page.getByRole('button', { name: 'Examples', exact: true }).click();
-  await page.getByRole('button', { name: 'Open Bubble sort in Write' }).click();
+  await page.getByRole('button', { name: 'Open Bubble sort code' }).click();
   await editor.fill('print("edited example")');
   await page.reload();
   await expect(editor).toHaveText('print("edited example")');
-  await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Write', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Dryrun pages' }).getByRole('button', { name: 'Custom code', exact: true }).click();
   await expect(editor).toContainText('arr = [5, 2, 9, 1, 6]');
 });
 
@@ -101,8 +103,10 @@ test('compact Watch opens the matching window in Inspect and keeps the return pa
   await expect(canvas.locator('[data-topic-pointer="Input:left"]')).toBeVisible();
   await expect(canvas.locator('[data-topic-pointer="Input:right"]')).toBeVisible();
   await expect(canvas.locator('[data-related="true"] code')).toHaveText('2');
+  await openWatchOptions(page);
   await expect(page.getByRole('link', { name: 'Back to examples' })).toBeVisible();
-  await page.getByRole('button', { name: 'Inspect this moment' }).click();
+  await openWatchOptions(page);
+  await page.getByRole('button', { name: 'Inspect this step' }).click();
   await expect(page.getByRole('button', { name: 'Visualize', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('#stage [data-in-window] code')).toHaveText('2');
   await expect(page.locator('#stage').getByRole('button', { name: 'Drag card to reorder' })).toBeHidden();

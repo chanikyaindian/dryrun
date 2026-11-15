@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, Copy, ListTree, PanelBottomClose, Terminal, Variable } from 'lucide-react';
+import { ChevronRight, Copy, ListTree, PanelBottomClose, Terminal, Variable, X } from 'lucide-react';
 import { rp } from '../js/views/basic.js';
 import type { Step } from './workspace';
 
@@ -17,16 +17,32 @@ export function frameVariables(step?: Step, previous?: Step, scope: number | nul
   });
 }
 
-type Props = {
+export type VariableVisibility = {
+  hiddenVariables: ReadonlySet<string>; onHideVariable: (name: string) => void; onRestoreVariables: () => void;
+};
+
+export function HideVariableButton({ name, onHide }: { name: string; onHide: (name: string) => void }) {
+  return <button type="button" className="variable-hide" aria-label={`Hide variable ${name}`}
+    title={`Hide variable ${name}`} onClick={event => {
+      const row = event.currentTarget.closest('.variable-row, dl > div');
+      const next = row?.nextElementSibling ?? row?.previousElementSibling;
+      const container = event.currentTarget.closest('.inspector-body, .variable-snapshot');
+      const removeNext = next?.querySelector<HTMLButtonElement>('.variable-hide');
+      (removeNext ?? container?.querySelector<HTMLButtonElement>('.variable-restore') ?? (container as HTMLElement | null))?.focus();
+      onHide(name);
+    }}><X size={14} /></button>;
+}
+
+type Props = VariableVisibility & {
   step?: Step; previous?: Step; tab: InspectionTab; setTab: (tab: InspectionTab) => void; onClose: () => void;
   focus: string; onFocus: (name: string) => void; showStack: boolean;
 };
-export function Inspector({ step, previous, tab: selected, setTab, onClose, focus, onFocus, showStack }: Props) {
+export function Inspector({ step, previous, tab: selected, setTab, onClose, focus, onFocus, showStack, hiddenVariables, onHideVariable, onRestoreVariables }: Props) {
   const visibleTabs = showStack ? tabs : tabs.filter(([key]) => key !== 'stack');
   const tab = !showStack && selected === 'stack' ? 'variables' : selected;
   const [scope, setScope] = useState<number | null>(null);
   const [copyStatus, setCopyStatus] = useState('');
-  const variables = tab === 'variables' ? frameVariables(step, previous, scope) : [];
+  const variables = tab === 'variables' ? frameVariables(step, previous, scope).filter(({ name }) => !hiddenVariables.has(name)) : [];
 
   return <section className="pane inspector" id="inspector-region" aria-label="Inspector">
     <div className="pane-header inspector-header">
@@ -49,7 +65,8 @@ export function Inspector({ step, previous, tab: selected, setTab, onClose, focu
           <option value="current">Current frame</option>
           {step.F.map((item, index) => <option value={index} key={index}>{item.n === '<module>' ? 'Main program' : item.n}</option>)}
         </select></label>}
-        {!variables.length && <p className="pane-empty">Variables appear as the code runs.</p>}
+        {hiddenVariables.size > 0 && <button type="button" className="variable-restore" onClick={onRestoreVariables}>Restore hidden</button>}
+        {!variables.length && <p className="pane-empty">{hiddenVariables.size ? 'No visible variables in this frame.' : 'Variables appear as the code runs.'}</p>}
         {variables.length > 0 && <div className="variable-head" aria-hidden="true"><span>Name</span><span>Value</span></div>}
         <div className="variable-grid">{variables.map(({ name, value, shown, changed }) => {
           const bitValue = typeof value === 'number' && Number.isSafeInteger(value) ||
@@ -57,11 +74,11 @@ export function Inspector({ step, previous, tab: selected, setTab, onClose, focu
           const visual = Boolean(typeof value === 'string' && value.length > 1 && value.length <= 80 ||
             bitValue && /mask|flags|^bits$|^bitset$/i.test(name) ||
             value && typeof value === 'object' && value.r);
-          return <button type="button" key={name} className="variable" disabled={!visual} aria-pressed={visual ? focus === name : undefined}
+          return <div key={name} className="variable-row"><button type="button" className="variable" disabled={!visual} aria-pressed={visual ? focus === name : undefined}
             title={shown} onClick={() => onFocus(name)}>
             <span className="variable-name">{changed && <i className="change-dot" aria-label="Changed" />}{name}</span>
             <code>{shown}</code>{visual && <ChevronRight />}
-          </button>;
+          </button><HideVariableButton name={name} onHide={onHideVariable} /></div>;
         })}</div>
       </>}
       {tab === 'stack' && (step ? <ol className="stack-frames">

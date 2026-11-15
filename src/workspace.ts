@@ -1,6 +1,6 @@
 import { detect } from '../js/detect/detector.js';
 import { buildTree } from '../js/views/structures.js';
-import { beatPosition, makeWatch, watchLandmarks, type WatchModel } from './watchModel';
+import { beatPosition, makeWatch, type WatchModel } from './watchModel';
 
 export type Value = null | string | number | boolean | { r?: string | number; f?: string; p?: string };
 export type Frame = { n: string; a: string[]; v: Record<string, Value> };
@@ -16,42 +16,22 @@ export type DocumentSource = { key: string; code: string; title?: string; descri
   lessonGrid?: string; lessonNodeClass?: string; lessonTrie?: boolean; lessonHeap?: string;
   lessonBits?: { names: string[]; width: number };
   lessonSearch?: { name: string; inclusive?: boolean } };
-export type Moment = { index: number; label: string; kind: 'call' | 'exception' | 'output' | 'decision' };
 type PatternMatch = { n: string; d: string; x: number; why: string[] };
 export type Replay = {
-  id: number; source: DocumentSource; steps: Step[]; moments: Moment[];
+  id: number; source: DocumentSource; steps: Step[];
   matches: PatternMatch[]; roles: Set<string>; topics: Set<string>; tree: ReturnType<typeof buildTree>;
   watch: WatchModel;
 };
 
 export function createReplay(id: number, source: DocumentSource, steps: Trace): Replay {
   const matches = steps[0]?.syntax ? [] : detect(source.code, steps, steps.feat ?? null) as PatternMatch[];
-  const moments = new Map<number, Moment>();
-  for (const event of steps.evs ?? []) {
-    if (event.t === 'c' && event.s < steps.length) {
-      moments.set(event.s, { index: event.s, label: 'Call ' + event.lab, kind: 'call' });
-    }
-  }
-  steps.forEach((step, index) => {
-    if (step.error || step.exc || step.handled) {
-      moments.set(index, { index, kind: 'exception', label: step.error ?? (step.handled ? 'Handled ' + step.handled : step.exc!.name) });
-    } else if (step.out !== (steps[index - 1]?.out ?? '')) {
-      moments.set(index, { index, kind: 'output', label: 'Output changed' });
-    }
-  });
   const watch = makeWatch(source, steps, steps.evs ?? []);
-  const landmarks = watchLandmarks(watch.beats);
-  for (const { index, label } of watch.beats) {
-    if (landmarks.has(index) && moments.get(index)?.kind !== 'exception') {
-      moments.set(index, { index, label: landmarks.get(index) + ' · ' + label, kind: 'decision' });
-    }
-  }
   const treeEvents = watch.callPaths ? (steps.evs ?? []).map(event => {
     const path = event.t === 'c' && watch.callPaths?.get(event.s);
     return path ? { ...event, lab: path + ' · ' + event.lab } : event;
   }) : steps.evs ?? [];
   return {
-    id, source, steps, matches, moments: [...moments.values()].sort((a, b) => a.index - b.index),
+    id, source, steps, matches,
     roles: new Set(steps.feat ?? []), topics: new Set(matches.map(match => match.n)),
     tree: buildTree(treeEvents),
     watch,
@@ -117,7 +97,7 @@ export type Preferences = {
   views: Record<ViewKey, boolean>; follow: boolean; live: boolean; inspector: boolean; speed: number;
   explicitTree?: boolean; explicitStack?: boolean; watchVariables?: boolean; dark?: boolean; navbarHidden?: boolean;
   watchSteps?: boolean; fullscreenSteps?: boolean;
-  inspectFullscreenVariables?: boolean; watchFullscreenVariables?: boolean;
+  inspectFullscreenVariables?: boolean;
 };
 export type Preset = 'Learn' | 'Debug' | 'Focus';
 const keys = [...primaryOptions, ...rendererOptions].map(([key]) => key);
@@ -137,7 +117,7 @@ export function saveStored<T>(key: string, value: T) {
 }
 export const preferencesKey = 'dryrun.workspace.v1';
 export function loadPreferences(): Preferences {
-  const saved = readStored<Partial<Preferences>>(preferencesKey, {});
+  const saved = readStored<Partial<Preferences> & { watchFullscreenVariables?: boolean }>(preferencesKey, {});
   const old = readStored<Partial<Preferences['views']>>('dryrun.playback-views.v1', {});
   const views = { ...allViews };
   for (const key of keys) {
@@ -147,12 +127,11 @@ export function loadPreferences(): Preferences {
   return {
     views,
     explicitTree: saved.explicitTree === true, explicitStack: saved.explicitStack === true,
-    watchVariables: saved.watchVariables === true, dark: saved.dark === true,
+    watchVariables: saved.watchVariables === true || saved.watchFullscreenVariables === true, dark: saved.dark === true,
     navbarHidden: saved.navbarHidden === true,
     watchSteps: typeof saved.watchSteps === 'boolean' ? saved.watchSteps : undefined,
     fullscreenSteps: saved.fullscreenSteps !== false,
     inspectFullscreenVariables: saved.inspectFullscreenVariables === true,
-    watchFullscreenVariables: saved.watchFullscreenVariables === true,
     live: saved.live === true, follow: saved.follow !== false, inspector: saved.inspector !== false,
     speed: [1000, 560, 240].includes(saved.speed ?? 0) ? saved.speed! : defaults.speed,
   };
